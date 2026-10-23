@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Hold'em Odds</title>
+<style>
+  :root {
+    --bg: #f4f6f5; --panel: #fff; --text: #17201c; --muted: #66726c; --line: #dde3df;
+    --accent: #1f7a4d; --accent-soft: #e2f3ea; --red: #c62828; --slot: #f0f3f1;
+    --win: #1f7a4d; --tie: #c98a00; --lose: #b9bfbb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #101513; --panel: #1a211e; --text: #e8eeea; --muted: #8e9b94; --line: #2c3731;
+      --accent: #3ec27f; --accent-soft: #1d3a2b; --red: #ff6b6b; --slot: #232c28;
+      --win: #3ec27f; --tie: #e0a526; --lose: #3b4540;
+    }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: env(safe-area-inset-top) 16px calc(24px + env(safe-area-inset-bottom));
+  }
+  main { max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 1.3rem; margin: 18px 0 12px; }
+  h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 14px; }
+  .row { display: flex; align-items: center; gap: 8px; }
+  .row.between { justify-content: space-between; }
+  .seg { display: flex; background: var(--slot); border-radius: 10px; padding: 3px; margin-bottom: 14px; }
+  .seg button { flex: 1; border: 0; background: none; color: var(--muted); font: inherit; font-weight: 600; padding: 9px; border-radius: 8px; cursor: pointer; }
+  .seg button.on { background: var(--panel); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.15); }
+  .cards { display: flex; gap: 6px; }
+  .slot {
+    width: 52px; height: 72px; border-radius: 8px; border: 2px dashed var(--line); background: var(--slot);
+    color: var(--muted); font: inherit; font-size: 1.3rem; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; line-height: 1.05; cursor: pointer; padding: 0;
+  }
+  .slot.filled { border: 2px solid var(--line); background: #fff; color: #111; font-weight: 700; }
+  .slot.red { color: #c62828; }
+  .slot .s { font-size: 1.4rem; }
+  .slot small { font-size: .62rem; font-weight: 500; color: var(--muted); }
+  .board-labels { display: flex; gap: 6px; margin-top: 4px; font-size: .7rem; color: var(--muted); }
+  .board-labels span { width: 52px; text-align: center; }
+  .board-labels span:nth-child(3) { margin-right: 10px; }
+  .board .cards .slot:nth-child(3) { margin-right: 10px; }
+  .player { padding: 10px 0; border-top: 1px solid var(--line); }
+  .player:first-of-type { border-top: 0; padding-top: 0; }
+  .player .name { font-weight: 600; flex: 1; }
+  button.link { background: none; border: 0; color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; padding: 6px 4px; }
+  button.link.danger { color: var(--red); }
+  button.add { width: 100%; margin-top: 8px; padding: 11px; border: 1.5px dashed var(--accent); border-radius: 10px; background: none; color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; }
+  .stepper { display: flex; align-items: center; gap: 10px; }
+  .stepper button { width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--line); background: var(--slot); color: var(--text); font-size: 1.2rem; cursor: pointer; }
+  .stepper b { min-width: 1.2em; text-align: center; }
+  .hint { color: var(--muted); text-align: center; padding: 10px 0; }
+  .head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .head .t { font-weight: 700; }
+  .nums { font-variant-numeric: tabular-nums; }
+  .nums .w { color: var(--win); font-weight: 700; }
+  .nums .ti { color: var(--tie); font-weight: 700; }
+  .muted { color: var(--muted); font-size: .8rem; }
+  .bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: var(--lose); margin: 8px 0 10px; }
+  .bar i { display: block; }
+  .bar .w { background: var(--win); } .bar .t { background: var(--tie); }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: .92rem; }
+  th { text-align: right; font-weight: 600; color: var(--muted); font-size: .72rem; text-transform: uppercase; padding: 4px 0; }
+  th:first-child, td:first-child { text-align: left; }
+  td { text-align: right; padding: 5px 0; border-top: 1px solid var(--line); }
+  td small { color: var(--muted); display: block; font-size: .7rem; }
+  .spin { opacity: .45; pointer-events: none; transition: opacity .15s; }
+  .note { font-size: .78rem; color: var(--muted); margin: 4px 2px 0; }
+
+  /* picker */
+  #overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: none; align-items: flex-end; justify-content: center; z-index: 10; }
+  #overlay.open { display: flex; }
+  #sheet { background: var(--panel); width: 100%; max-width: 640px; max-height: 88vh; overflow-y: auto; border-radius: 16px 16px 0 0; padding: 14px 14px calc(18px + env(safe-area-inset-bottom)); }
+  #sheet .top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .suit-h { font-size: 1.1rem; margin: 8px 0 4px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(42px, 1fr)); gap: 6px; }
+  .pick { height: 44px; border-radius: 8px; border: 1px solid var(--line); background: #fff; color: #111; font: inherit; font-weight: 700; cursor: pointer; padding: 0; }
+  .pick.red { color: #c62828; }
+  .pick:disabled { opacity: .22; cursor: default; }
+</style>
+</head>
+<body>
+<main>
+  <h1>♠ Hold'em Odds</h1>
+
+  <div class="seg" id="modeSeg">
+    <button data-mode="single">Individual</button>
+    <button data-mode="multi">Multiple</button>
+  </div>
+
+  <div class="panel board">
+    <div class="row between"><h2>Board</h2><button class="link danger" id="clearBoard">Clear</button></div>
+    <div class="cards" id="boardCards"></div>
+    <div class="board-labels"><span>Flop</span><span>Flop</span><span>Flop</span><span>Turn</span><span>River</span></div>
+  </div>
+
+  <div class="panel">
+    <h2 id="playersTitle">Your hand</h2>
+    <div id="players"></div>
+    <button class="add" id="addPlayer">+ Player</button>
+    <div class="row between" id="oppRow" style="margin-top:12px">
+      <span>Random opponents</span>
+      <div class="stepper"><button id="oppMinus" aria-label="Fewer opponents">−</button><b id="oppN">1</b><button id="oppPlus" aria-label="More opponents">+</button></div>
+    </div>
+  </div>
+
+  <div id="results"></div>
+</main>
+
+<div id="overlay"><div id="sheet"></div></div>
+
+<script type="text/plain" id="engine">
+// ---- Poker engine (runs in a worker; also loaded by tests). Card = rank*4 + suit, rank 0 (2) .. 12 (A). ----
+var rc = new Int8Array(13), sc = new Int8Array(4), sm = new Int16Array(4);
+var acc = 0, cnt = 0;
+function push(r) { acc = (acc << 4) | r; cnt++; }
+function fin(cat) { return (cat << 20) | (acc << (4 * (5 - cnt))); }
+function straightHigh(mask) {
+  var m = (mask << 1) | ((mask >> 12) & 1);
+  for (var h = 13; h >= 4; h--) if (((m >> (h - 4)) & 31) === 31) return h - 1;
+  return -1;
+}
+function kickers(e1, e2, n) {
+  for (var r = 12; r >= 0 && n > 0; r--) if (rc[r] > 0 && r !== e1 && r !== e2) { push(r); n--; }
+}
+// Score of the best 5-card hand from 7 cards; category is score >> 20.
+function evalSeven(c) {
+  rc.fill(0); sc.fill(0); sm.fill(0);
+  var mask = 0, i, r, s;
+  for (i = 0; i < 7; i++) { r = c[i] >> 2; s = c[i] & 3; rc[r]++; sc[s]++; sm[s] |= 1 << r; mask |= 1 << r; }
+  var fs = -1;
+  for (s = 0; s < 4; s++) if (sc[s] >= 5) fs = s;
+  acc = 0; cnt = 0;
+  if (fs >= 0) {
+    var sh = straightHigh(sm[fs]);
+    if (sh >= 0) { push(sh); return fin(8); }
+  }
+  var quad = -1, t1 = -1, t2 = -1, p1 = -1, p2 = -1;
+  for (r = 12; r >= 0; r--) {
+    var n = rc[r];
+    if (n === 4) quad = r;
+    else if (n === 3) { if (t1 < 0) t1 = r; else if (t2 < 0) t2 = r; }
+    else if (n === 2) { if (p1 < 0) p1 = r; else if (p2 < 0) p2 = r; }
+  }
+  if (quad >= 0) { push(quad); kickers(quad, -1, 1); return fin(7); }
+  if (t1 >= 0 && (t2 >= 0 || p1 >= 0)) { push(t1); push(t2 > p1 ? t2 : p1); return fin(6); }
+  if (fs >= 0) {
+    for (r = 12; r >= 0 && cnt < 5; r--) if ((sm[fs] >> r) & 1) push(r);
+    return fin(5);
+  }
+  var sh2 = straightHigh(mask);
+  if (sh2 >= 0) { push(sh2); return fin(4); }
+  if (t1 >= 0) { push(t1); kickers(t1, -1, 2); return fin(3); }
+  if (p2 >= 0) { push(p1); push(p2); kickers(p1, p2, 1); return fin(2); }
+  if (p1 >= 0) { push(p1); kickers(p1, -1, 3); return fin(1); }
+  kickers(-1, -1, 5);
+  return fin(0);
+}
+
+function remainingDeck(used) {
+  var taken = {}, deck = [];
+  used.forEach(function (c) { taken[c] = true; });
+  for (var c = 0; c < 52; c++) if (!taken[c]) deck.push(c);
+  return deck;
+}
+
+// Enumerate every board completion, calling visit(arrays) with each player's 7-card array filled in.
+function enumerate(board, holes, visit) {
+  var used = board.slice();
+  holes.forEach(function (h) { used.push(h[0], h[1]); });
+  var deck = remainingDeck(used), bl = board.length, need = 5 - bl;
+  var arrs = holes.map(function (h) {
+    var a = new Int8Array(7); a[0] = h[0]; a[1] = h[1];
+    for (var i = 0; i < bl; i++) a[2 + i] = board[i];
+    return a;
+  });
+  var np = arrs.length;
+  (function rec(start, d) {
+    if (d === need) { visit(arrs); return; }
+    for (var i = start; i <= deck.length - (need - d); i++) {
+      for (var p = 0; p < np; p++) arrs[p][2 + bl + d] = deck[i];
+      rec(i + 1, d + 1);
+    }
+  })(0, 0);
+}
+
+function zeros() { return [0, 0, 0, 0, 0, 0, 0, 0, 0]; }
+
+// Exact odds for known hands. Returns fractions per player.
+function runMulti(board, hands) {
+  var np = hands.length, total = 0;
+  var P = hands.map(function () { return { cat: zeros(), winCat: zeros(), tieCat: zeros(), win: 0, tie: 0, equity: 0 }; });
+  var sc2 = new Array(np);
+  enumerate(board, hands, function (arrs) {
+    var best = -1, nw = 0, p;
+    for (p = 0; p < np; p++) { sc2[p] = evalSeven(arrs[p]); if (sc2[p] > best) { best = sc2[p]; nw = 1; } else if (sc2[p] === best) nw++; }
+    total++;
+    for (p = 0; p < np; p++) {
+      var cat = sc2[p] >> 20, q = P[p];
+      q.cat[cat]++;
+      if (sc2[p] === best) {
+        if (nw === 1) { q.winCat[cat]++; q.win++; q.equity++; }
+        else { q.tieCat[cat]++; q.tie++; q.equity += 1 / nw; }
+      }
+    }
+  });
+  P.forEach(function (q) {
+    ['cat', 'winCat', 'tieCat'].forEach(function (k) { q[k] = q[k].map(function (x) { return x / total; }); });
+    q.win /= total; q.tie /= total; q.equity /= total;
+  });
+  return { mode: 'multi', n: total, players: P };
+}
+
+// Exact category odds for one hand + Monte Carlo equity against random opponents.
+function runSingle(board, hand, opp, samples) {
+  var total = 0, cat = zeros();
+  enumerate(board, [hand], function (arrs) { cat[evalSeven(arrs[0]) >> 20]++; total++; });
+  cat = cat.map(function (x) { return x / total; });
+  var res = { mode: 'single', n: total, cat: cat, vs: null };
+  if (opp > 0) {
+    var deck = remainingDeck(board.concat(hand)), bl = board.length, need = 5 - bl;
+    var take = need + 2 * opp, me = new Int8Array(7), ot = new Int8Array(7);
+    var w = 0, t = 0, eq = 0, i, j, k;
+    for (i = 0; i < samples; i++) {
+      for (j = 0; j < take; j++) { k = j + Math.floor(Math.random() * (deck.length - j)); var x = deck[j]; deck[j] = deck[k]; deck[k] = x; }
+      me[0] = hand[0]; me[1] = hand[1]; ot[0] = 0;
+      for (j = 0; j < bl; j++) me[2 + j] = board[j];
+      for (j = 0; j < need; j++) me[2 + bl + j] = deck[j];
+      var mine = evalSeven(me), best = -1, nt = 1;
+      for (var o = 0; o < opp; o++) {
+        ot[0] = deck[need + 2 * o]; ot[1] = deck[need + 2 * o + 1];
+        for (j = 2; j < 7; j++) ot[j] = me[j];
+        var s = evalSeven(ot);
+        if (s > best) best = s;
+        if (s === mine) nt++;
+      }
+      if (mine > best) { w++; eq++; } else if (mine === best) { t++; eq += 1 / nt; }
+    }
+    res.vs = { opp: opp, samples: samples, win: w / samples, tie: t / samples, equity: eq / samples };
+  }
+  return res;
+}
+
+function run(d) {
+  return d.mode === 'multi' ? runMulti(d.board, d.hands) : runSingle(d.board, d.hands[0], d.opp, 40000);
+}
+</script>
+
+<script>
+(function () {
+  var RANKS = '23456789TJQKA', SUITS = ['♠', '♥', '♦', '♣'];
+  var CATS = ['High Card', 'Pair', 'Two Pair', 'Three of a Kind', 'Straight', 'Flush', 'Full House', 'Four of a Kind', 'Straight Flush'];
+  var MAX_PLAYERS = 8;
+
+  var state = {
+    mode: 'single',
+    board: [null, null, null, null, null],
+    players: [[null, null], [null, null], [null, null]],
+    opp: 1
+  };
+  try { var saved = JSON.parse(localStorage.getItem('poker-calc')); if (saved && saved.board && saved.players) state = saved; } catch (e) {}
+  var target = null, runId = 0, timer = null, worker = null;
+
+  var $ = function (id) { return document.getElementById(id); };
+  var isRed = function (c) { return (c & 3) === 1 || (c & 3) === 2; };
+  var rankLabel = function (c) { var r = RANKS[c >> 2]; return r === 'T' ? '10' : r; };
+
+  function slotHTML(c, label, attrs) {
+    if (c == null) return '<button class="slot" ' + attrs + ' aria-label="' + label + '">+</button>';
+    return '<button class="slot filled' + (isRed(c) ? ' red' : '') + '" ' + attrs + ' aria-label="' + label + '"><span>' + rankLabel(c) + '</span><span class="s">' + SUITS[c & 3] + '</span></button>';
+  }
+
+  function activePlayers() { return state.mode === 'single' ? [state.players[0]] : state.players; }
+  function usedCards() {
+    var u = {};
+    state.board.forEach(function (c) { if (c != null) u[c] = true; });
+    activePlayers().forEach(function (h) { h.forEach(function (c) { if (c != null) u[c] = true; }); });
+    return u;
+  }
+
+  function render() {
+    var single = state.mode === 'single';
+    document.querySelectorAll('#modeSeg button').forEach(function (b) { b.classList.toggle('on', b.dataset.mode === state.mode); });
+    $('boardCards').innerHTML = state.board.map(function (c, i) { return slotHTML(c, 'Board card ' + (i + 1), 'data-t="board" data-i="' + i + '"'); }).join('');
+    $('playersTitle').textContent = single ? 'Your hand' : 'Hands';
+    $('players').innerHTML = activePlayers().map(function (h, p) {
+      var name = single ? 'You' : (p === 0 ? 'You' : 'Player ' + (p + 1));
+      return '<div class="player"><div class="row"><span class="name">' + name + '</span>' +
+        (!single && state.players.length > 2 ? '<button class="link danger" data-rm="' + p + '">Remove</button>' : '') +
+        '</div><div class="cards" style="margin-top:6px">' +
+        h.map(function (c, i) { return slotHTML(c, name + ' card ' + (i + 1), 'data-t="hand" data-p="' + p + '" data-i="' + i + '"'); }).join('') +
+        '</div></div>';
+    }).join('');
+    $('addPlayer').style.display = !single && state.players.length < MAX_PLAYERS ? '' : 'none';
+    $('oppRow').style.display = single ? '' : 'none';
+    $('oppN').textContent = state.opp;
+    try { localStorage.setItem('poker-calc', JSON.stringify(state)); } catch (e) {}
+    schedule();
+  }
+
+  // ---- picker ----
+  function openPicker(t) {
+    target = t;
+    var used = usedCards(), cur = getTarget();
+    var html = '<div class="top"><b>Pick a card</b><span>' +
+      (cur != null ? '<button class="link danger" id="pkRemove">Remove</button>' : '') +
+      '<button class="link" id="pkClose">Done</button></span></div>';
+    for (var s = 0; s < 4; s++) {
+      html += '<div class="suit-h" style="color:' + (s === 1 || s === 2 ? 'var(--red)' : 'inherit') + '">' + SUITS[s] + '</div><div class="grid">';
+      for (var r = 12; r >= 0; r--) {
+        var c = r * 4 + s, dis = used[c] && c !== cur;
+        html += '<button class="pick' + (s === 1 || s === 2 ? ' red' : '') + '" data-c="' + c + '"' + (dis ? ' disabled' : '') + '>' + rankLabel(c) + SUITS[s] + '</button>';
+      }
+      html += '</div>';
+    }
+    $('sheet').innerHTML = html;
+    $('overlay').classList.add('open');
+  }
+  function closePicker() { target = null; $('overlay').classList.remove('open'); }
+  function getTarget() { return target.t === 'board' ? state.board[target.i] : state.players[target.p][target.i]; }
+  function setTarget(c) { if (target.t === 'board') state.board[target.i] = c; else state.players[target.p][target.i] = c; }
+  // Next empty slot in the same group (board or the same hand), so picks flow naturally.
+  function nextEmpty() {
+    var arr = target.t === 'board' ? state.board : state.players[target.p];
+    for (var i = target.i + 1; i < arr.length; i++) if (arr[i] == null) return i;
+    return -1;
+  }
+
+  $('sheet').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    if (b.id === 'pkClose') return closePicker();
+    if (b.id === 'pkRemove') { setTarget(null); closePicker(); return render(); }
+    if (b.dataset.c != null) {
+      setTarget(+b.dataset.c);
+      var n = nextEmpty();
+      if (n >= 0) { target.i = n; render(); openPicker(target); } else { closePicker(); render(); }
+    }
+  });
+  $('overlay').addEventListener('click', function (e) { if (e.target === $('overlay')) closePicker(); });
+
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    if (b.classList.contains('slot')) {
+      var d = b.dataset;
+      return openPicker(d.t === 'board' ? { t: 'board', i: +d.i } : { t: 'hand', p: +d.p, i: +d.i });
+    }
+    if (b.dataset.rm != null) { state.players.splice(+b.dataset.rm, 1); render(); }
+    if (b.dataset.mode) { state.mode = b.dataset.mode; render(); }
+  });
+  $('addPlayer').onclick = function () { if (state.players.length < MAX_PLAYERS) { state.players.push([null, null]); render(); } };
+  $('clearBoard').onclick = function () { state.board = [null, null, null, null, null]; render(); };
+  $('oppMinus').onclick = function () { state.opp = Math.max(0, state.opp - 1); render(); };
+  $('oppPlus').onclick = function () { state.opp = Math.min(7, state.opp + 1); render(); };
+
+  // ---- calculation ----
+  var engineSrc = $('engine').textContent;
+
+  function getWorker() {
+    if (worker) return worker;
+    try {
+      worker = new Worker(URL.createObjectURL(new Blob([engineSrc + '\nself.onmessage=function(e){self.postMessage({id:e.data.id,res:run(e.data)})}'], { type: 'text/javascript' })));
+    } catch (e) { worker = false; }
+    return worker;
+  }
+
+  function schedule() {
+    clearTimeout(timer);
+    timer = setTimeout(calculate, 150);
+  }
+
+  function calculate() {
+    var res = $('results'), single = state.mode === 'single';
+    var board = state.board.filter(function (c) { return c != null; });
+    var hands = activePlayers();
+    var incomplete = hands.some(function (h) { return h.some(function (c) { return c == null; }); });
+    if (incomplete) {
+      runId++;
+      res.innerHTML = '<div class="hint">' + (single ? 'Pick your two cards' : 'Pick two cards for every player') + ' to see the odds.</div>';
+      return;
+    }
+    var id = ++runId;
+    res.classList.add('spin');
+    var msg = { id: id, mode: state.mode, board: board, hands: hands, opp: state.opp };
+    var done = function (out) { if (id !== runId) return; res.classList.remove('spin'); show(out); };
+    var w = getWorker();
+    if (w) {
+      w.onmessage = function (e) { done(e.data.res); };
+      w.onerror = function () { worker = false; setTimeout(calculate, 0); };
+      w.postMessage(msg);
+    } else {
+      setTimeout(function () { done(new Function(engineSrc + ';return run;')()(msg)); }, 20);
+    }
+  }
+
+  // ---- results ----
+  function pct(p) {
+    if (p <= 0) return '0%';
+    if (p >= 0.9999) return '100%';
+    var v = p * 100;
+    return v < 0.1 ? '<0.1%' : v < 10 ? v.toFixed(2) + '%' : v.toFixed(1) + '%';
+  }
+  function oneIn(p) {
+    if (p <= 0 || p >= 1) return '';
+    var n = 1 / p;
+    return '1 in ' + (n < 10 ? n.toFixed(1) : Math.round(n).toLocaleString());
+  }
+  function bar(win, tie) {
+    return '<div class="bar"><i class="w" style="width:' + win * 100 + '%"></i><i class="t" style="width:' + tie * 100 + '%"></i></div>';
+  }
+
+  function show(out) {
+    var html = '';
+    if (out.mode === 'single') {
+      html += '<div class="panel"><h2>Your final hand</h2><table><tr><th>Hand</th><th>Odds</th></tr>';
+      for (var c = 8; c >= 0; c--) if (out.cat[c] > 0) html += '<tr><td>' + CATS[c] + '</td><td>' + pct(out.cat[c]) + '<small>' + oneIn(out.cat[c]) + '</small></td></tr>';
+      html += '</table><p class="note">Exact, across ' + out.n.toLocaleString() + ' possible board runouts.</p></div>';
+      if (out.vs) {
+        var v = out.vs;
+        html += '<div class="panel"><h2>Vs ' + v.opp + ' random hand' + (v.opp > 1 ? 's' : '') + '</h2><div class="head nums"><span><span class="w">Win ' + pct(v.win) + '</span> · <span class="ti">Tie ' + pct(v.tie) + '</span></span><span class="muted">Equity ' + pct(v.equity) + '</span></div>' +
+          bar(v.win, v.tie) + '<p class="note">Estimated from ' + v.samples.toLocaleString() + ' simulated deals.</p></div>';
+      }
+    } else {
+      out.players.forEach(function (q, p) {
+        html += '<div class="panel"><div class="head"><span class="t">' + (p === 0 ? 'You' : 'Player ' + (p + 1)) + '</span><span class="nums"><span class="w">Win ' + pct(q.win) + '</span> · <span class="ti">Tie ' + pct(q.tie) + '</span></span></div>' +
+          bar(q.win, q.tie) +
+          '<table><tr><th>Hand</th><th>Makes it</th><th>Wins with it</th></tr>';
+        for (var c = 8; c >= 0; c--) if (q.cat[c] > 0) {
+          html += '<tr><td>' + CATS[c] + '</td><td>' + pct(q.cat[c]) + '</td><td>' + pct(q.winCat[c]) + (q.tieCat[c] > 0 ? '<small>+ ' + pct(q.tieCat[c]) + ' tie</small>' : '') + '</td></tr>';
+        }
+        html += '</table><div class="muted" style="margin-top:6px">Equity (ties split): ' + pct(q.equity) + '</div></div>';
+      });
+      html += '<p class="note">"Wins with it" subtracts every runout where another player holds something better, including a higher hand of the same type (e.g. a bigger straight). Exact, across ' + out.n.toLocaleString() + ' possible board runouts.</p>';
+    }
+    $('results').innerHTML = html;
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>
