@@ -3,7 +3,7 @@
 A no-limit hold'em bot for tables of 2–6 players, trained by self-play with PPO.
 
 - **Game** ([poker/env.py](poker/env.py)): standard blinds and turn order, with side pots for unequal all-ins. Every decision is one of five actions: fold, check/call, raise ½ pot, raise pot, all-in.
-- **Training tables:** each hand draws a table size of 2–6 players (`--min-players`/`--max-players`) and stacks of 10–250 big blinds (`--min-stack-bb`/`--max-stack-bb`).
+- **Training tables:** each hand draws a table size of 2–6 players (`--min-players`/`--max-players`) and stacks of 10–250 big blinds (`--min-stack-bb`/`--max-stack-bb`). `--hu-frac 0.3` sends an extra 30% of games to heads-up tables.
 - **What the network sees** ([poker/features.py](poker/features.py)):
   - the player's cards and the board;
   - **equity against as many random hands as there are opponents left**: a precomputed table before the flop, Monte Carlo after it;
@@ -68,18 +68,19 @@ Most of the work is simulating hands, so **CPU cores matter more than the GPU**.
 
 ## Playing it in the browser
 
-[play.html](../play.html) lets visitors play against 1–5 bots. Every bot is the same network. It runs entirely in the browser:
+[play.html](../play.html) lets visitors play against 1–5 bots. It runs entirely in the browser:
 
 - [play-engine.js](../play-engine.js) is a JS copy of the game rules, the features and the network.
-- [bot-model.json](../bot-model.json) holds the trained weights and the preflop equity table.
+- [bot-model.json](../bot-model.json) is the multi-player bot, used at 3–6 players: the trained weights and the preflop equity table.
+- [bot-model-hu.json](../bot-model-hu.json) is used for heads-up games. It's an older bot trained only on 2-player hands (6M of them), with a smaller input layout (`encodeHU` in play-engine.js). It still beats the multi-player bot heads-up, especially with deep stacks. The Python code that trained it is in git history (commit `1eb7a7f`).
 
-To ship a newer bot:
+To ship a newer multi-player bot:
 
 ```bash
 .venv/bin/python export.py --ckpt ckpt/latest.pt --out ../bot-model.json
 ```
 
-Then commit and push `bot-model.json`. The site uses the new bot as soon as GitHub Pages redeploys.
+Then commit and push `bot-model.json`. The site uses the new bot as soon as GitHub Pages redeploys. If the multi-player bot ever beats the heads-up bot heads-up, export it to `bot-model-hu.json` as well. The page picks the input layout from the file's `obs_size`.
 
 If you change the rules or the features in Python, change `play-engine.js` to match. [tests/test_parity.py](tests/test_parity.py) fails if the two disagree. It needs `node` installed and is skipped without it.
 

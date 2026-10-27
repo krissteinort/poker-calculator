@@ -295,6 +295,35 @@
     return x;
   }
 
+  // The heads-up-only bot (bot-model-hu.json) was trained on this older, 2-player layout.
+  var HU_OBS_SIZE = 52 + 52 + 1 + 4 + 1 + 5 + 9 + 16;
+  function encodeHU(env, seat, eq) {
+    var x = new Float32Array(HU_OBS_SIZE), board = env.board(), i;
+    env.hole[seat].forEach(function (c) { x[c] = 1; });
+    board.forEach(function (c) { x[52 + c] = 1; });
+    i = 104;
+    x[i++] = eq;
+    x[i + env.street] = 1; i += 4;
+    x[i++] = env.button === seat ? 1 : 0;
+    var s0 = CHIP_SCALE_BB * env.bb, tc = env.toCall(seat), pot = env.pot();
+    x[i] = pot / (2 * s0);
+    x[i + 1] = env.stack[seat] / s0;
+    x[i + 2] = env.stack[1 - seat] / s0;
+    x[i + 3] = tc / s0;
+    x[i + 4] = tc / (pot + tc);
+    i += 5;
+    var cards = env.hole[seat].concat(board);
+    x[i + (cards.length >= 5 ? evaluate(cards) >> 20 : ((cards[0] >> 2) === (cards[1] >> 2) ? 1 : 0))] = 1;
+    i += 9;
+    for (var st = 0; st < 4; st++) {
+      env.history[st].forEach(function (h) {
+        if (h[1] === FOLD) return;
+        x[i + st * 4 + (h[0] === seat ? 0 : 1) + (h[1] === CALL ? 2 : 0)] += 0.25;
+      });
+    }
+    return x;
+  }
+
   function Layer(w, b) { this.w = w; this.b = b; }
   Layer.prototype.apply = function (x, relu) {
     var out = this.b.data.length, inp = x.length, y = new Float64Array(out), W = this.w.data;
@@ -333,10 +362,11 @@
   }
 
   // The bots: one network shared by every bot seat. Equity is cached per (seat, street, opponents left) like
-  // EquityCache in features.py.
+  // EquityCache in features.py. A heads-up model (obs_size 140) uses encodeHU and a preflop table of plain numbers.
   function Bot(json) {
     this.policy = new Policy(decodeModel(json));
     this.preflop = json.preflop;
+    this.headsUp = json.obs_size === HU_OBS_SIZE;
     this.cache = {};
   }
   Bot.prototype.newHand = function () { this.cache = {}; };
@@ -344,12 +374,14 @@
     var opp = env.inHand().length - 1, key = seat + ':' + env.street + ':' + opp;
     if (!(key in this.cache)) {
       var board = env.board();
-      this.cache[key] = board.length ? equityMC(env.hole[seat], board, 128, opp) : this.preflop[preflopClass(env.hole[seat])][opp - 1];
+      var pre = board.length ? null : this.preflop[preflopClass(env.hole[seat])];
+      this.cache[key] = board.length ? equityMC(env.hole[seat], board, 128, opp) : this.headsUp ? pre : pre[opp - 1];
     }
     return this.cache[key];
   };
   Bot.prototype.act = function (env, seat) {
-    var out = this.policy.forward(encode(env, seat, this.equity(env, seat)), env.legalActions());
+    var x = (this.headsUp ? encodeHU : encode)(env, seat, this.equity(env, seat));
+    var out = this.policy.forward(x, env.legalActions());
     var r = Math.random(), a = 0;
     for (; a < out.probs.length - 1; a++) { r -= out.probs[a]; if (r < 0) break; }
     while (out.probs[a] === 0) a--;  // guard against rounding landing on an illegal action
@@ -358,7 +390,7 @@
 
   var api = {
     FOLD: FOLD, CALL: CALL, HALF_POT: HALF_POT, POT: POT, ALL_IN: ALL_IN, CATEGORIES: CATEGORIES, MAX_PLAYERS: MAX_PLAYERS,
-    evaluate: evaluate, equityMC: equityMC, preflopClass: preflopClass, Env: Env, encode: encode,
+    evaluate: evaluate, equityMC: equityMC, preflopClass: preflopClass, Env: Env, encode: encode, encodeHU: encodeHU,
     Policy: Policy, Bot: Bot,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

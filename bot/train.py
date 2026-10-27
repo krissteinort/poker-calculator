@@ -33,6 +33,8 @@ def parse_args():
     p.add_argument('--max-stack-bb', type=float, default=250)
     p.add_argument('--min-players', type=int, default=2, help='table sizes are drawn between these')
     p.add_argument('--max-players', type=int, default=6)
+    p.add_argument('--hu-frac', type=float, default=0.0,
+                   help='extra share of games played heads-up, on top of the uniform table-size draw')
     p.add_argument('--self-seat-frac', type=float, default=0.3,
                    help='vs past selves or simple bots, the share of the other seats played by the current network')
     p.add_argument('--hidden', type=int, default=256)
@@ -139,8 +141,9 @@ def main():
                 opp, self_frac = ('policy', w), 1.0  # pure self-play: every seat is the learner
             else:
                 opp = ('policy', rng.choice(pool_snaps))
+            players = (2, 2) if rng.random() < args.hu_frac else (args.min_players, args.max_players)
             tasks.append((w, opp, args.hands_per_task, rng.randrange(2 ** 31), (args.min_stack_bb, args.max_stack_bb),
-                          (args.min_players, args.max_players), self_frac))
+                          players, self_frac))
         parts = workers.map(rollout, tasks)
         batch = {k: np.concatenate([p[k] for p in parts]) for k in ('obs', 'mask', 'act', 'logp', 'val', 'rew', 'done')}
         batch['adv'], batch['ret'] = advantages(batch['rew'], batch['val'], batch['done'], args.gae_lambda)

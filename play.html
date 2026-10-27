@@ -156,8 +156,9 @@
   <div class="panel"><h2>This hand</h2><ul id="log"></ul></div>
 
   <p class="note">No-limit hold'em for 2 to 6 players. Stacks carry over from hand to hand and the button moves one seat each hand.
-    Every bot is the same small neural network, trained by self-play at tables of 2 to 6 players with stacks of 10 to 250 big blinds.
-    It only knows five moves: fold, check/call, raise ½ pot, raise pot and all-in, so you get the same five. <span id="modelInfo"></span></p>
+    The bots are small neural networks trained by self-play with stacks of 10 to 250 big blinds: heads-up you face a specialist trained
+    only on 2-player games, and at 3 to 6 players every bot is one network trained at tables of 2 to 6.
+    They only know five moves: fold, check/call, raise ½ pot, raise pot and all-in, so you get the same five. <span id="modelInfo"></span></p>
 </main>
 
 <script src="play-engine.js"></script>
@@ -400,6 +401,33 @@
     $('think').innerHTML = html;
   }
 
+  // Heads-up games use the 2-player specialist; bigger tables use the multi-player network. Each file is fetched once.
+  var models = {};
+  function modelFile() { return game.players === 2 ? 'bot-model-hu.json' : 'bot-model.json'; }
+  function startWithBot() {
+    var file = modelFile();
+    if (models[file]) return useBot(models[file]);
+    bot = null;
+    $('status').textContent = 'Loading the bots…';
+    $('actions').innerHTML = '';
+    fetch(file)
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (json) {
+        models[file] = new E.Bot(json);
+        models[file].hands = json.hands;
+        if (file === modelFile()) useBot(models[file]);  // skip if the settings changed while loading
+      })
+      .catch(function () {
+        $('score').textContent = 'Could not load the bots.';
+        $('status').textContent = file + ' did not load. If you opened this file directly, serve the folder instead (python3 -m http.server).';
+      });
+  }
+  function useBot(b) {
+    bot = b;
+    $('modelInfo').textContent = 'The ' + (game.players === 2 ? 'heads-up' : 'multi-player') + ' bot trained on ' + b.hands.toLocaleString() + ' hands.';
+    newHand();
+  }
+
   // ---- settings ----
   function fillSettings() {
     $('players').value = String(game.players);
@@ -424,7 +452,7 @@
     $('settings').open = false;
     busy = false;
     handId++;
-    if (bot) newHand();
+    startWithBot();
   });
 
   $('actions').addEventListener('click', function (e) {
@@ -449,17 +477,7 @@
   if (!game) newGame(4, 2, 200);
   fillSettings();
 
-  fetch('bot-model.json')
-    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-    .then(function (json) {
-      bot = new E.Bot(json);
-      $('modelInfo').textContent = 'This version trained on ' + json.hands.toLocaleString() + ' hands.';
-      newHand();
-    })
-    .catch(function () {
-      $('score').textContent = 'Could not load the bots.';
-      $('status').textContent = 'bot-model.json did not load. If you opened this file directly, serve the folder instead (python3 -m http.server).';
-    });
+  startWithBot();
 })();
 </script>
 </body>
