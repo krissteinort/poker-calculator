@@ -177,7 +177,7 @@
   // Chips are counted in half big blinds (env.bb = 2 chips); game.bigBlind is the dollar value of a big blind.
   // You are always seat 0; bots sit in seats 1..n-1.
   var bot = null, env = new E.Env(), handId = 0, log = [], lastThink = null, busy = false, broke = false, startStacks = null;
-  var game = null, resultLines = [];
+  var game = null, resultLines = [], reveal = false;  // reveal: the player asked to see every bot's cards after the hand
   try {
     var g = JSON.parse(localStorage.getItem('poker-vs-bots-game'));
     if (g && g.players >= 2 && g.stacks && g.stacks.length === g.players && g.bigBlind) game = g;
@@ -241,6 +241,7 @@
   function newHand() {
     log = [];
     resultLines = [];
+    reveal = false;
     for (var s = 1; s < game.players; s++) {
       if (game.stacks[s] < env.bb) {
         game.stacks[s] += game.buyInChips;
@@ -328,7 +329,8 @@
     var opps = '';
     for (var s = 1; s < game.players; s++) {
       var cards = '';
-      if (dealt && !env.folded[s]) cards = env.hole[s].map(function (c) { return cardHTML(showdown ? c : 'back'); }).join('');
+      var faceUp = (showdown && !env.folded[s]) || (dealt && env.done && reveal);
+      if (dealt && (!env.folded[s] || faceUp)) cards = env.hole[s].map(function (c) { return cardHTML(faceUp ? c : 'back'); }).join('');
       opps += '<div class="pod' + (live && env.toAct === s ? ' turn' : '') + (dealt && env.folded[s] ? ' folded' : '') + '">' +
         '<div class="row1">' + name(s) + (dealt ? tags(s) : '') + '</div>' +
         '<div class="row2"><div class="mini">' + cards + '</div><div class="meta">' + seatMeta(s, live) + '</div></div></div>';
@@ -354,7 +356,10 @@
     } else if (dealt && env.done) {
       var mine = env.payoff[YOU];
       status.innerHTML = '<span class="' + (mine > 0 ? 'pos' : mine < 0 ? 'neg' : '') + '">' + resultLines.join('<br>') + '</span>';
-      actions.innerHTML = '<button class="primary next" id="next">Next hand</button>';
+      var hidden = false;
+      for (var h = 1; h < game.players; h++) if (env.folded[h] || !showdown) hidden = true;
+      actions.innerHTML = (hidden && !reveal ? '<button class="next" id="reveal">Show bot cards</button>' : '') +
+        '<button class="primary next" id="next">Next hand</button>';
     } else if (live && env.toAct !== YOU) {
       status.textContent = name(env.toAct) + ' is thinking…';
       actions.innerHTML = buttonsHTML(true);
@@ -459,6 +464,7 @@
     var b = e.target.closest('button');
     if (!b || b.disabled || !bot) return;
     if (b.id === 'next') return newHand();
+    if (b.id === 'reveal') { reveal = true; return render(); }
     if (b.id === 'rebuy') {
       game.stacks[YOU] += game.buyInChips;
       game.boughtIn += game.buyInChips;
