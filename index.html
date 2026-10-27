@@ -410,6 +410,24 @@ function run(d) {
     var n = 1 / p;
     return '1 in ' + (n < 10 ? n.toFixed(1) : Math.round(n).toLocaleString());
   }
+  function comb(n, k) { var r = 1; for (var i = 0; i < k; i++) r = r * (n - i) / (i + 1); return r; }
+  function bigNum(n) {
+    if (n < 1e6) return Math.round(n).toLocaleString();
+    var names = ['million', 'billion', 'trillion', 'quadrillion', 'quintillion', 'sextillion', 'septillion', 'octillion', 'nonillion', 'decillion'];
+    var i = Math.floor(Math.log10(n) / 3) - 2;
+    if (i >= names.length) return n.toExponential(2);
+    return (n / Math.pow(1000, i + 2)).toPrecision(3) + ' ' + names[i];
+  }
+  // Number of equally likely ways to deal these exact hole cards to these seats, then (optionally) this exact board.
+  function dealWays(nHands, nBoard) {
+    var deck = 52, ways = 1;
+    for (var p = 0; p < nHands; p++) { ways *= comb(deck, 2); deck -= 2; }
+    var holeOnly = ways;
+    if (nBoard >= 3) { ways *= comb(deck, 3); deck -= 3; }
+    if (nBoard >= 4) { ways *= deck; deck--; }
+    if (nBoard >= 5) { ways *= deck; }
+    return { hole: holeOnly, all: ways };
+  }
   function bar(win, tie) {
     return '<div class="bar"><i class="w" style="width:' + win * 100 + '%"></i><i class="t" style="width:' + tie * 100 + '%"></i></div>';
   }
@@ -435,6 +453,12 @@ function run(d) {
         }
         html += '</table><div class="muted" style="margin-top:6px">Equity (ties split): ' + pct(q.equity) + '</div></div>';
       });
+      var nb = state.board.filter(function (c) { return c != null; }).length;
+      var dw = dealWays(out.players.length, nb);
+      html += '<div class="panel"><h2>Odds of this exact deal</h2><table>' +
+        '<tr><td>These ' + out.players.length + ' hands, to these seats</td><td>1 in ' + bigNum(dw.hole) + '</td></tr>' +
+        (nb >= 3 ? '<tr><td>…plus this exact board</td><td>1 in ' + bigNum(dw.all) + '</td></tr>' : '') +
+        '</table><p class="note">How likely it was for exactly these cards to be dealt, before any cards were seen.</p></div>';
       html += '<p class="note">"Wins with it" subtracts every runout where another player holds something better, including a higher hand of the same type (e.g. a bigger straight). Exact, across ' + out.n.toLocaleString() + ' possible board runouts.</p>';
     }
     $('results').innerHTML = html;
