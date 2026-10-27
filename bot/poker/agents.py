@@ -72,7 +72,7 @@ class PolicyAgent:
         p, v = forward(self.w, x, m)
         a = int(np.argmax(p)) if self.greedy else int(rng.choices(range(len(p)), weights=p)[0])
         if self.record:
-            self.trace.append((x, m, a, float(np.log(p[a] + 1e-12)), float(v)))
+            self.trace.append((seat, (x, m, a, float(np.log(p[a] + 1e-12)), float(v))))
         return a
 
 

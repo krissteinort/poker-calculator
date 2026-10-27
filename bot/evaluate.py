@@ -1,6 +1,7 @@
-"""Measure a trained bot with duplicate matches (same cards played from both seats to cancel out luck).
+"""Measure a trained bot with duplicate matches: the bot plays against copies of an opponent, and every deck is
+replayed with the bot in each seat, which cancels out most of the luck.
 
-  python evaluate.py --ckpt ckpt/latest.pt --vs equity call raise random
+  python evaluate.py --ckpt ckpt/latest.pt --vs equity call raise random --players 2 6
   python evaluate.py --ckpt ckpt/latest.pt --vs old_ckpt/latest.pt
 """
 import os
@@ -30,18 +31,21 @@ def main():
     p.add_argument('--ckpt', default='ckpt/latest.pt')
     p.add_argument('--vs', nargs='+', default=['equity', 'call', 'raise', 'random'],
                    help='baseline names (%s) or checkpoint paths' % ', '.join(BASELINES))
-    p.add_argument('--pairs', type=int, default=20000)
+    p.add_argument('--hands', type=int, default=40000, help='hands per matchup')
+    p.add_argument('--players', type=int, nargs='+', default=[2, 6], help='table sizes to test')
     p.add_argument('--stack-bb', type=float, nargs='+', default=[100], help='stack depths to test, in big blinds')
     p.add_argument('--workers', type=int, default=os.cpu_count())
     args = p.parse_args()
 
     me = load_policy(args.ckpt)
     with mp.get_context('spawn').Pool(args.workers) as pool:
-        for depth in args.stack_bb:
-            for opp in args.vs:
-                spec = opp if opp in BASELINES else load_policy(opp)
-                mbb, ci = duplicate_match(pool, me, spec, args.pairs, seed=1, chunks=args.workers * 4, stack_bb=depth)
-                print(f'{depth:g}bb vs {opp:>12}: {mbb:+8.0f} mbb/hand  (95% CI ±{ci:.0f}, {2 * args.pairs:,} hands)')
+        for players in args.players:
+            for depth in args.stack_bb:
+                for opp in args.vs:
+                    spec = opp if opp in BASELINES else load_policy(opp)
+                    mbb, ci = duplicate_match(pool, me, spec, args.hands // players, seed=1, chunks=args.workers * 4,
+                                              stack_bb=depth, players=players)
+                    print(f'{players} players, {depth:g}bb, vs {opp:>12}: {mbb:+8.0f} mbb/hand  (95% CI ±{ci:.0f})')
 
 
 if __name__ == '__main__':

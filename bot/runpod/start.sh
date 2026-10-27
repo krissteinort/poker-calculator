@@ -13,7 +13,7 @@ python -m unittest tests.test_poker
 
 status=0
 python train.py --ckpt-dir "$CKPT_DIR" --hours "$HOURS" "$@" 2>&1 | tee -a "$CKPT_DIR.train.log" || status=$?
-python evaluate.py --ckpt "$CKPT_DIR/latest.pt" --pairs 20000 2>&1 | tee -a "$CKPT_DIR.train.log" || true
+python evaluate.py --ckpt "$CKPT_DIR/latest.pt" --hands 40000 2>&1 | tee -a "$CKPT_DIR.train.log" || true
 
 if [ -n "${RUNPOD_POD_ID:-}" ] && [ "${STOP_WHEN_DONE:-1}" = "1" ]; then
   echo "stopping pod $RUNPOD_POD_ID"

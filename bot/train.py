@@ -31,6 +31,10 @@ def parse_args():
     p.add_argument('--hands-per-task', type=int, default=200)
     p.add_argument('--min-stack-bb', type=float, default=10, help='training stacks are drawn between these')
     p.add_argument('--max-stack-bb', type=float, default=250)
+    p.add_argument('--min-players', type=int, default=2, help='table sizes are drawn between these')
+    p.add_argument('--max-players', type=int, default=6)
+    p.add_argument('--self-seat-frac', type=float, default=0.3,
+                   help='vs past selves or simple bots, the share of the other seats played by the current network')
     p.add_argument('--hidden', type=int, default=256)
     p.add_argument('--lr', type=float, default=3e-4)
     p.add_argument('--epochs', type=int, default=4)
@@ -44,7 +48,7 @@ def parse_args():
     p.add_argument('--snapshot-every', type=int, default=10, help='iterations between adding a past self to the pool')
     p.add_argument('--pool-size', type=int, default=20)
     p.add_argument('--eval-every', type=int, default=25)
-    p.add_argument('--eval-pairs', type=int, default=2000)
+    p.add_argument('--eval-hands', type=int, default=4000, help='hands per matchup in the periodic evaluations')
     p.add_argument('--seed', type=int, default=0)
     return p.parse_args()
 
@@ -128,13 +132,15 @@ def main():
         tasks = []
         for _ in range(max(1, args.hands_per_iter // args.hands_per_task)):
             r = rng.random()
+            self_frac = args.self_seat_frac
             if r < args.baseline_frac:
                 opp = rng.choice(['call', 'raise', 'equity', 'random'])
             elif r < args.baseline_frac + args.self_play_frac or not pool_snaps:
-                opp = ('policy', w)
+                opp, self_frac = ('policy', w), 1.0  # pure self-play: every seat is the learner
             else:
                 opp = ('policy', rng.choice(pool_snaps))
-            tasks.append((w, opp, args.hands_per_task, rng.randrange(2 ** 31), (args.min_stack_bb, args.max_stack_bb)))
+            tasks.append((w, opp, args.hands_per_task, rng.randrange(2 ** 31), (args.min_stack_bb, args.max_stack_bb),
+                          (args.min_players, args.max_players), self_frac))
         parts = workers.map(rollout, tasks)
         batch = {k: np.concatenate([p[k] for p in parts]) for k in ('obs', 'mask', 'act', 'logp', 'val', 'rew', 'done')}
         batch['adv'], batch['ret'] = advantages(batch['rew'], batch['val'], batch['done'], args.gae_lambda)
@@ -150,14 +156,16 @@ def main():
             pool_snaps = pool_snaps[-args.pool_size:]
 
         row = {'iter': it, 'hands': hands, 'decisions': len(batch['act']),
-               'bb_per_hand': sum(p['winnings'] for p in parts) / n_hands,
+               'bb_per_hand': sum(p['winnings'] for p in parts) / max(1, sum(p['seats'] for p in parts)),
                'sim_s': round(sim_time, 1), 'total_s': round(time.time() - t0, 1), **stats}
         if it % args.eval_every == 0:
             w = numpy_weights(model)
-            for opp in ('equity', 'call', 'raise'):
-                mbb, ci = duplicate_match(workers, ('policy', w), opp, args.eval_pairs, it, args.workers)
-                row[f'vs_{opp}_mbb'] = round(mbb)
-                row[f'vs_{opp}_ci'] = round(ci)
+            for players in sorted({args.min_players, args.max_players}):
+                for opp in ('equity', 'call'):
+                    mbb, ci = duplicate_match(workers, ('policy', w), opp, args.eval_hands // players, it, args.workers,
+                                              players=players)
+                    row[f'{players}p_vs_{opp}_mbb'] = round(mbb)
+                    row[f'{players}p_vs_{opp}_ci'] = round(ci)
         log.write(json.dumps(row) + '\n')
         log.flush()
         print(' '.join(f'{k}={v:.4g}' if isinstance(v, float) else f'{k}={v}' for k, v in row.items()), flush=True)

@@ -9,9 +9,9 @@ import unittest
 
 import numpy as np
 
-from poker.agents import RandomAgent, forward
+from poker.agents import CallAgent, RandomAgent, forward
 from poker.cards import evaluate
-from poker.env import HeadsUpEnv
+from poker.env import PokerEnv
 from poker.features import OBS_SIZE, encode, legal_mask
 
 ENGINE = os.path.join(os.path.dirname(__file__), '..', '..', 'play-engine.js')
@@ -26,6 +26,7 @@ d.hands.forEach((h, n) => {
   const env = new E.Env();
   env.reset(h.deck, h.button, h.stacks);
   h.decisions.forEach((dc) => {
+    if (env.toAct !== dc.seat) bad.push(['seat', n, env.toAct, dc.seat]);
     const legal = env.legalActions();
     if (JSON.stringify(legal) !== JSON.stringify(dc.legal)) bad.push(['legal', n, legal, dc.legal]);
     const x = E.encode(env, env.toAct, dc.eq);
@@ -34,7 +35,7 @@ d.hands.forEach((h, n) => {
     if (p.some((v, i) => Math.abs(v - dc.probs[i]) > 1e-4)) bad.push(['probs', n, p, dc.probs]);
     env.step(dc.action);
   });
-  if (!env.done || env.payoff[0] !== h.payoff[0]) bad.push(['payoff', n, env.payoff, h.payoff]);
+  if (!env.done || JSON.stringify(env.payoff) !== JSON.stringify(h.payoff)) bad.push(['payoff', n, env.payoff, h.payoff]);
 });
 console.log(JSON.stringify(bad.slice(0, 5)));
 """
@@ -48,22 +49,25 @@ class TestParity(unittest.TestCase):
                   'body.2.bias': (256,), 'pi.weight': (5, 256), 'pi.bias': (5,), 'v.weight': (1, 256), 'v.bias': (1,)}
         w = {k: (nrng.standard_normal(s) * 0.2).astype(np.float32) for k, s in shapes.items()}
         rng = random.Random(0)
-        env, agent = HeadsUpEnv(), RandomAgent()
+        env, agents = PokerEnv(), [RandomAgent(), CallAgent()]
         hands = []
-        for n in range(400):
+        for h in range(600):
             deck = list(range(52))
             rng.shuffle(deck)
-            stacks = [rng.randint(1, 300) * env.bb, rng.randint(1, 300) * env.bb]
-            env.reset(deck, n % 2, stacks=stacks)
+            n = rng.randint(2, 6)
+            stacks = [rng.randint(1, 300) * env.bb for _ in range(n)]
+            button = rng.randrange(n)
+            env.reset(deck, button, stacks=stacks)
             decisions = []
             while not env.done:
                 eq = rng.random()
                 x = encode(env, env.to_act, eq)
                 p, _ = forward(w, x, legal_mask(env))
-                a = agent.act(env, env.to_act, None, rng)
-                decisions.append({'legal': env.legal_actions(), 'eq': eq, 'obs': x.tolist(), 'probs': p.tolist(), 'action': a})
+                a = rng.choice(agents).act(env, env.to_act, None, rng)
+                decisions.append({'seat': env.to_act, 'legal': env.legal_actions(), 'eq': eq, 'obs': x.tolist(),
+                                  'probs': p.tolist(), 'action': a})
                 env.step(a)
-            hands.append({'deck': deck, 'button': n % 2, 'stacks': stacks, 'decisions': decisions, 'payoff': env.payoff})
+            hands.append({'deck': deck, 'button': button, 'stacks': stacks, 'decisions': decisions, 'payoff': env.payoff})
         evals = []
         for _ in range(3000):
             cs = rng.sample(range(52), rng.choice([5, 6, 7]))

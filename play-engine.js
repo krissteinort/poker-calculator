@@ -1,9 +1,10 @@
-// Heads-up engine for play.html: a JS mirror of bot/poker (cards.py, env.py, features.py, agents.forward).
-// Keep it in sync with the Python; bot/tests/test_parity.py checks that the two agree.
+// No-limit hold'em engine for play.html (2-6 players): a JS mirror of bot/poker (cards.py, env.py, features.py,
+// agents.forward). Keep it in sync with the Python; bot/tests/test_parity.py checks that the two agree.
 (function (root) {
   var FOLD = 0, CALL = 1, HALF_POT = 2, POT = 3, ALL_IN = 4;
   var BOARD_COUNT = [0, 3, 4, 5, 5];
-  var OBS_SIZE = 140;
+  var MAX_PLAYERS = 6, OPP_FEATURES = 7;
+  var OBS_SIZE = 52 + 52 + 1 + 4 + 5 + 5 + MAX_PLAYERS + 1 + 5 + 9 + 16 + (MAX_PLAYERS - 1) * OPP_FEATURES;
   var CHIP_SCALE_BB = 100;  // chip amounts are fed to the network in units of 100 big blinds
   var CATEGORIES = ['High Card', 'Pair', 'Two Pair', 'Three of a Kind', 'Straight',
     'Flush', 'Full House', 'Four of a Kind', 'Straight Flush'];
@@ -64,19 +65,24 @@
     return (1 << 20) | (p1 << 16) | (k[0] << 12) | (k[1] << 8) | (k[2] << 4);
   }
 
-  function equityMC(hole, board, samples) {
-    var known = {}, deck = [], i, j;
+  // Monte Carlo equity (share of the pot won, ties split) vs `opponents` random hands.
+  function equityMC(hole, board, samples, opponents) {
+    var known = {}, deck = [], i, j, k2 = 2 * (opponents || 1);
     hole.concat(board).forEach(function (c) { known[c] = true; });
     for (i = 0; i < 52; i++) if (!known[i]) deck.push(i);
     var need = 5 - board.length, total = 0;
     for (var s = 0; s < samples; s++) {
-      for (i = 0; i < need + 2; i++) {
+      for (i = 0; i < need + k2; i++) {
         j = i + Math.floor(Math.random() * (deck.length - i));
         var t = deck[i]; deck[i] = deck[j]; deck[j] = t;
       }
-      var b = board.concat(deck.slice(2, 2 + need));
-      var me = evaluate(hole.concat(b)), op = evaluate([deck[0], deck[1]].concat(b));
-      total += me > op ? 1 : me === op ? 0.5 : 0;
+      var b = board.concat(deck.slice(k2, k2 + need)), me = evaluate(hole.concat(b)), ties = 0, lost = false;
+      for (var o = 0; o < k2; o += 2) {
+        var sc = evaluate([deck[o], deck[o + 1]].concat(b));
+        if (sc > me) { lost = true; break; }
+        if (sc === me) ties++;
+      }
+      if (!lost) total += 1 / (ties + 1);
     }
     return total / samples;
   }
@@ -91,52 +97,77 @@
   }
 
   // ---- game (mirrors env.py) ----
-  function Env(stackBB, bb) {
+  function Env(nPlayers, stackBB, bb) {
+    this.n = nPlayers || 2;
     this.bb = bb || 2;
     this.startStack = (stackBB || 100) * this.bb;
   }
-  // stacks: starting chips per seat (default startStack each); each must cover a big blind.
+  // stacks: starting chips per seat (its length sets the number of players); each must cover a big blind.
   Env.prototype.reset = function (deck, button, stacks) {
-    this.hole = [deck.slice(0, 2), deck.slice(2, 4)];
-    this.fullBoard = deck.slice(4, 9);
+    if (stacks) this.n = stacks.length;
+    var n = this.n, i;
+    this.hole = [];
+    for (i = 0; i < n; i++) this.hole.push(deck.slice(2 * i, 2 * i + 2));
+    this.fullBoard = deck.slice(2 * n, 2 * n + 5);
     this.button = button;
-    this.stack = stacks ? stacks.slice() : [this.startStack, this.startStack];
-    this.bet = [0, 0];
-    this.contrib = [0, 0];
+    this.stack = stacks ? stacks.slice() : fill(n, this.startStack);
+    this.bet = fill(n, 0);
+    this.contrib = fill(n, 0);
+    this.folded = fill(n, false);
+    this.acted = fill(n, false);
     this.street = 0;
     this.history = [[], [], [], []];
     this.done = false;
     this.payoff = null;
-    this._put(button, this.bb / 2);
-    this._put(1 - button, this.bb);
+    this.winnings = null;  // chips each seat took from the pot
+    this.sbSeat = n === 2 ? button : (button + 1) % n;
+    this.bbSeat = (this.sbSeat + 1) % n;
+    this._put(this.sbSeat, this.bb / 2);
+    this._put(this.bbSeat, this.bb);
     this.lastRaise = this.bb;
-    this.acted = [false, false];
-    this.toAct = button;
+    this.toAct = this._nextNeeding(this.bbSeat);
   };
+  function fill(n, v) { var a = []; for (var i = 0; i < n; i++) a.push(v); return a; }
+  function sum(a) { var s = 0; for (var i = 0; i < a.length; i++) s += a[i]; return s; }
   Env.prototype.board = function () { return this.fullBoard.slice(0, BOARD_COUNT[this.street]); };
-  Env.prototype.pot = function () { return this.contrib[0] + this.contrib[1]; };
-  Env.prototype.toCall = function (seat) { return this.bet[1 - seat] - this.bet[seat]; };
+  Env.prototype.pot = function () { return sum(this.contrib); };
+  Env.prototype.toCall = function (seat) { return Math.max.apply(null, this.bet) - this.bet[seat]; };
+  Env.prototype.canAct = function (seat) { return !this.folded[seat] && this.stack[seat] > 0; };
+  Env.prototype.inHand = function () {
+    var out = [];
+    for (var s = 0; s < this.n; s++) if (!this.folded[s]) out.push(s);
+    return out;
+  };
   Env.prototype._put = function (seat, amount) {
     amount = Math.min(amount, this.stack[seat]);
     this.stack[seat] -= amount;
     this.bet[seat] += amount;
     this.contrib[seat] += amount;
   };
+  Env.prototype._nextNeeding = function (after) {
+    var mb = Math.max.apply(null, this.bet);
+    for (var i = 1; i <= this.n; i++) {
+      var s = (after + i) % this.n;
+      if (this.canAct(s) && (!this.acted[s] || this.bet[s] < mb)) return s;
+    }
+    return null;
+  };
   Env.prototype.raiseAmount = function (seat, frac) {
     var tc = this.toCall(seat);
     return tc + Math.max(Math.floor(frac * (this.pot() + tc)), this.lastRaise, this.bb);
   };
   Env.prototype.legalActions = function () {
-    var seat = this.toAct, tc = this.toCall(seat), acts = tc > 0 ? [FOLD] : [];
+    var seat = this.toAct, tc = this.toCall(seat), acts = tc > 0 ? [FOLD] : [], others = false;
     acts.push(CALL);
-    if (this.stack[seat] > tc && this.stack[1 - seat] > 0) {
+    for (var o = 0; o < this.n; o++) if (o !== seat && this.canAct(o)) others = true;
+    if (this.stack[seat] > tc && others) {
       if (this.raiseAmount(seat, 0.5) < this.stack[seat]) acts.push(HALF_POT);
       if (this.raiseAmount(seat, 1) < this.stack[seat]) acts.push(POT);
       acts.push(ALL_IN);
     }
     return acts;
   };
-  // Chips `seat` would add for action a (for labels).
+  // Chips the player to act would add for action a (for labels).
   Env.prototype.amountFor = function (a) {
     var seat = this.toAct;
     if (a === FOLD) return 0;
@@ -145,66 +176,96 @@
     return this.raiseAmount(seat, a === HALF_POT ? 0.5 : 1);
   };
   Env.prototype.step = function (a) {
-    var seat = this.toAct, opp = 1 - seat;
+    var seat = this.toAct;
     if (this.done || this.legalActions().indexOf(a) < 0) throw new Error('illegal action ' + a);
     this.history[this.street].push([seat, a]);
     if (a === FOLD) {
-      var lost = this.contrib[seat], net = [0, 0];
-      net[seat] = -lost; net[opp] = lost;
-      return this._finish(net);
-    }
-    if (a === CALL) {
+      this.folded[seat] = true;
+      var left = this.inHand();
+      if (left.length === 1) {
+        var win = fill(this.n, 0);
+        win[left[0]] = this.pot();
+        return this._finish(win);
+      }
+    } else if (a === CALL) {
       this._put(seat, this.toCall(seat));
       this.acted[seat] = true;
     } else {
       var amount = a === ALL_IN ? this.stack[seat] : this.raiseAmount(seat, a === HALF_POT ? 0.5 : 1);
-      var raiseBy = this.bet[seat] + amount - this.bet[opp];
+      var raiseBy = this.bet[seat] + amount - Math.max.apply(null, this.bet);
       this._put(seat, amount);
       this.lastRaise = Math.max(this.lastRaise, raiseBy);
-      this.acted = [false, false];
+      this.acted = fill(this.n, false);
       this.acted[seat] = true;
     }
-    var matched = this.bet[0] === this.bet[1] || (Math.min(this.stack[0], this.stack[1]) === 0 && this.bet[seat] <= this.bet[opp]);
-    if (this.acted[0] && this.acted[1] && matched) this._nextStreet();
-    else this.toAct = opp;
+    var next = this._nextNeeding(seat);
+    if (next === null) this._endRound();
+    else this.toAct = next;
   };
-  Env.prototype._nextStreet = function () {
-    if (Math.min(this.stack[0], this.stack[1]) === 0 || this.street === 3) {
+  Env.prototype._endRound = function () {
+    var canAct = 0;
+    for (var s = 0; s < this.n; s++) if (this.canAct(s)) canAct++;
+    if (canAct <= 1 || this.street === 3) {
       this.street = 4;
       return this._showdown();
     }
     this.street++;
-    this.bet = [0, 0];
-    this.acted = [false, false];
+    this.bet = fill(this.n, 0);
+    this.acted = fill(this.n, false);
     this.lastRaise = this.bb;
-    this.toAct = 1 - this.button;
+    this.toAct = this._nextNeeding(this.button);
   };
+  // Split the main pot and any side pots between the best hands eligible for each.
   Env.prototype._showdown = function () {
-    var m = Math.min(this.contrib[0], this.contrib[1]);
-    var s0 = evaluate(this.hole[0].concat(this.fullBoard)), s1 = evaluate(this.hole[1].concat(this.fullBoard));
-    if (s0 === s1) return this._finish([0, 0]);
-    this._finish(s0 > s1 ? [m, -m] : [-m, m]);
+    var self = this, live = this.inHand(), score = {}, win = fill(this.n, 0), prev = 0;
+    live.forEach(function (s) { score[s] = evaluate(self.hole[s].concat(self.fullBoard)); });
+    var levels = live.map(function (s) { return self.contrib[s]; })
+      .filter(function (v, i, a) { return a.indexOf(v) === i; }).sort(function (a, b) { return a - b; });
+    this.pots = [];  // for the UI: {amount, winners}
+    levels.forEach(function (level) {
+      var part = 0;
+      self.contrib.forEach(function (c) { part += Math.min(c, level) - Math.min(c, prev); });
+      var eligible = live.filter(function (s) { return self.contrib[s] >= level; });
+      var best = Math.max.apply(null, eligible.map(function (s) { return score[s]; }));
+      var winners = eligible.filter(function (s) { return score[s] === best; });
+      var share = Math.floor(part / winners.length), odd = part - share * winners.length;
+      // odd chips go to the winners closest to the left of the button
+      winners.sort(function (a, b) { return mod(a - self.button - 1, self.n) - mod(b - self.button - 1, self.n); });
+      winners.forEach(function (s, k) { win[s] += share + (k < odd ? 1 : 0); });
+      self.pots.push({ amount: part, winners: winners, eligible: eligible.length });
+      prev = level;
+    });
+    this._finish(win);
   };
-  Env.prototype._finish = function (net) {
+  function mod(a, n) { return ((a % n) + n) % n; }
+  Env.prototype._finish = function (win) {
     this.done = true;
-    this.payoff = [net[0] / this.bb, net[1] / this.bb];
+    this.winnings = win;
+    var self = this;
+    this.payoff = win.map(function (w, s) { return (w - self.contrib[s]) / self.bb; });
   };
 
   // ---- features (mirrors features.py) ----
   function encode(env, seat, eq) {
-    var x = new Float32Array(OBS_SIZE), board = env.board(), i;
+    var x = new Float32Array(OBS_SIZE), board = env.board(), n = env.n, i, o, k;
     env.hole[seat].forEach(function (c) { x[c] = 1; });
     board.forEach(function (c) { x[52 + c] = 1; });
     i = 104;
     x[i++] = eq;
     x[i + env.street] = 1; i += 4;
-    x[i++] = env.button === seat ? 1 : 0;
+    x[i + n - 2] = 1; i += 5;
+    x[i + env.inHand().length - 2] = 1; i += 5;
+    x[i + mod(seat - env.button, n)] = 1; i += MAX_PLAYERS;
+    var waiting = 0;
+    for (o = 0; o < n; o++) if (o !== seat && env.canAct(o) && !env.acted[o]) waiting++;
+    x[i++] = waiting / 5;
+
     var s0 = CHIP_SCALE_BB * env.bb, tc = env.toCall(seat), pot = env.pot();
-    x[i] = pot / (2 * s0);
-    x[i + 1] = env.stack[seat] / s0;
-    x[i + 2] = env.stack[1 - seat] / s0;
-    x[i + 3] = tc / s0;
-    x[i + 4] = tc / (pot + tc);
+    x[i] = env.stack[seat] / s0;
+    x[i + 1] = pot / (2 * s0);
+    x[i + 2] = tc / s0;
+    x[i + 3] = tc / (pot + tc);
+    x[i + 4] = env.bet[seat] / s0;
     i += 5;
     var cards = env.hole[seat].concat(board);
     x[i + (cards.length >= 5 ? evaluate(cards) >> 20 : ((cards[0] >> 2) === (cards[1] >> 2) ? 1 : 0))] = 1;
@@ -212,8 +273,24 @@
     for (var st = 0; st < 4; st++) {
       env.history[st].forEach(function (h) {
         if (h[1] === FOLD) return;
-        x[i + st * 4 + (h[0] === seat ? 0 : 1) + (h[1] === CALL ? 2 : 0)] += 0.25;
+        x[i + st * 4 + (h[0] === seat ? 0 : 2) + (h[1] === CALL ? 1 : 0)] += 0.25;
       });
+    }
+    i += 16;
+    for (k = 1; k < MAX_PLAYERS; k++) {
+      if (k < n) {
+        o = (seat + k) % n;
+        x[i] = 1;
+        x[i + 1] = env.folded[o] ? 0 : 1;
+        x[i + 2] = !env.folded[o] && env.stack[o] === 0 ? 1 : 0;
+        x[i + 3] = env.stack[o] / s0;
+        x[i + 4] = env.bet[o] / s0;
+        x[i + 5] = env.contrib[o] / s0;
+        var raises = 0;
+        env.history[env.street].forEach(function (h) { if (h[0] === o && h[1] > CALL) raises++; });
+        x[i + 6] = 0.25 * raises;
+      }
+      i += OPP_FEATURES;
     }
     return x;
   }
@@ -236,13 +313,13 @@
   }
   Policy.prototype.forward = function (x, legal) {
     var h = this.l2.apply(this.l1.apply(x, true), true);
-    var logits = this.pi.apply(h, false), max = -Infinity, probs = [], sum = 0, a;
+    var logits = this.pi.apply(h, false), max = -Infinity, probs = [], total = 0, a;
     for (a = 0; a < logits.length; a++) {
       if (legal.indexOf(a) < 0) logits[a] = -1e9;
       if (logits[a] > max) max = logits[a];
     }
-    for (a = 0; a < logits.length; a++) { probs.push(Math.exp(logits[a] - max)); sum += probs[a]; }
-    return { probs: probs.map(function (p) { return p / sum; }), value: this.v.apply(h, false)[0] };
+    for (a = 0; a < logits.length; a++) { probs.push(Math.exp(logits[a] - max)); total += probs[a]; }
+    return { probs: probs.map(function (p) { return p / total; }), value: this.v.apply(h, false)[0] };
   };
 
   function decodeModel(json) {
@@ -255,7 +332,8 @@
     return weights;
   }
 
-  // The bot as an opponent: caches equity per street like EquityCache in features.py.
+  // The bots: one network shared by every bot seat. Equity is cached per (seat, street, opponents left) like
+  // EquityCache in features.py.
   function Bot(json) {
     this.policy = new Policy(decodeModel(json));
     this.preflop = json.preflop;
@@ -263,10 +341,10 @@
   }
   Bot.prototype.newHand = function () { this.cache = {}; };
   Bot.prototype.equity = function (env, seat) {
-    var key = seat + ':' + env.street;
+    var opp = env.inHand().length - 1, key = seat + ':' + env.street + ':' + opp;
     if (!(key in this.cache)) {
       var board = env.board();
-      this.cache[key] = board.length ? equityMC(env.hole[seat], board, 128) : this.preflop[preflopClass(env.hole[seat])];
+      this.cache[key] = board.length ? equityMC(env.hole[seat], board, 128, opp) : this.preflop[preflopClass(env.hole[seat])][opp - 1];
     }
     return this.cache[key];
   };
@@ -279,7 +357,7 @@
   };
 
   var api = {
-    FOLD: FOLD, CALL: CALL, HALF_POT: HALF_POT, POT: POT, ALL_IN: ALL_IN, CATEGORIES: CATEGORIES,
+    FOLD: FOLD, CALL: CALL, HALF_POT: HALF_POT, POT: POT, ALL_IN: ALL_IN, CATEGORIES: CATEGORIES, MAX_PLAYERS: MAX_PLAYERS,
     evaluate: evaluate, equityMC: equityMC, preflopClass: preflopClass, Env: Env, encode: encode,
     Policy: Policy, Bot: Bot,
   };

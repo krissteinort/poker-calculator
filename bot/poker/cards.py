@@ -114,20 +114,27 @@ def category(cs):
     return evaluate(cs) >> 20
 
 
-# ---- equity vs one random hand ----
+# ---- equity vs random hands ----
 
-def equity_mc(hole, board, samples, rng=random):
-    """Monte Carlo equity (win + tie/2) of `hole` vs one random hand, completing the board."""
+def equity_mc(hole, board, samples, rng=random, opponents=1):
+    """Monte Carlo equity (share of the pot won, ties split) of `hole` vs `opponents` random hands."""
     known = set(hole) | set(board)
     deck = [c for c in range(52) if c not in known]
     need = 5 - len(board)
+    k2 = 2 * opponents
     total = 0.0
     for _ in range(samples):
-        draw = rng.sample(deck, need + 2)
-        b = board + draw[2:]
+        draw = rng.sample(deck, need + k2)
+        b = board + draw[k2:]
         me = evaluate(hole + b)
-        op = evaluate(draw[:2] + b)
-        total += 1.0 if me > op else 0.5 if me == op else 0.0
+        ties = 0
+        for o in range(0, k2, 2):
+            s = evaluate(draw[o:o + 2] + b)
+            if s > me:
+                break
+            ties += s == me
+        else:
+            total += 1.0 / (ties + 1)
     return total / samples
 
 
@@ -144,27 +151,33 @@ PREFLOP_FILE = os.path.join(os.path.dirname(__file__), 'preflop_equity.json')
 _preflop = None
 
 
-def preflop_equity(hole):
+def preflop_equity(hole, opponents=1):
     global _preflop
     if _preflop is None:
         with open(PREFLOP_FILE) as f:
             _preflop = json.load(f)
-    return _preflop[preflop_class(hole)]
+    return _preflop[preflop_class(hole)][opponents - 1]
 
 
-def build_preflop_table(samples=40000, seed=0):
+def _preflop_row(args):
+    hole, samples, seed = args
     rng = random.Random(seed)
-    table = {}
+    return preflop_class(hole), [round(equity_mc(hole, [], samples, rng, k), 4) for k in range(1, 6)]
+
+
+def build_preflop_table(samples=30000):
+    """{class: [equity vs 1 random hand, vs 2, ... vs 5]}"""
+    from multiprocessing import Pool
+    hands = []
     for i in range(13):
         for j in range(i, 13):
             ri, rj = 12 - i, 12 - j
             if ri == rj:
-                hands = [[ri * 4, rj * 4 + 1]]
+                hands.append([ri * 4, rj * 4 + 1])
             else:
-                hands = [[ri * 4, rj * 4], [ri * 4, rj * 4 + 1]]  # suited, offsuit
-            for h in hands:
-                table[preflop_class(h)] = round(equity_mc(h, [], samples, rng), 4)
-    return table
+                hands += [[ri * 4, rj * 4], [ri * 4, rj * 4 + 1]]  # suited, offsuit
+    with Pool() as pool:
+        return dict(pool.map(_preflop_row, [(h, samples, n) for n, h in enumerate(hands)]))
 
 
 if __name__ == '__main__':

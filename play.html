@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Play vs Bot</title>
+<title>Play vs Bots</title>
 <style>
   :root {
     --bg: #f4f6f5; --panel: #fff; --text: #17201c; --muted: #66726c; --line: #dde3df;
     --accent: #1f7a4d; --red: #c62828; --slot: #f0f3f1; --felt: #1f6b47; --felt-text: #e9f5ee;
-    --win: #1f7a4d; --lose: #c62828;
+    --win: #1f7a4d; --lose: #c62828; --gold: #ffd166;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -42,25 +42,40 @@
   details.settings .hint { font-weight: 400; color: var(--muted); font-size: .78rem; }
   .btn { min-height: 46px; border-radius: 10px; border: 0; background: var(--accent); color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
 
-  .table { background: var(--felt); color: var(--felt-text); border-radius: 16px; padding: 14px; margin-bottom: 12px; }
-  .seat { display: flex; align-items: center; gap: 12px; }
-  .seat .info { flex: 1; min-width: 0; }
-  .seat .name { font-weight: 700; }
-  .seat .stack, .seat .bet { font-size: .85rem; opacity: .85; font-variant-numeric: tabular-nums; }
-  .seat .bet b { color: #ffd166; }
-  .dealer { display: inline-block; width: 20px; height: 20px; line-height: 20px; border-radius: 50%; background: #fff; color: #111; font-size: .7rem; font-weight: 800; text-align: center; margin-left: 6px; vertical-align: 1px; }
-  .middle { margin: 16px 0; text-align: center; }
+  .table { background: var(--felt); color: var(--felt-text); border-radius: 16px; padding: 12px; margin-bottom: 12px; }
+  .opps { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+  .pod { background: rgba(0,0,0,.18); border-radius: 10px; padding: 8px; border: 2px solid transparent; min-width: 0; }
+  .pod.turn { border-color: var(--gold); }
+  .pod.folded { opacity: .45; }
+  .pod .row1 { display: flex; align-items: center; gap: 4px; font-weight: 700; font-size: .9rem; white-space: nowrap; }
+  .pod .row2 { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+  .pod .meta { font-size: .78rem; line-height: 1.3; opacity: .9; font-variant-numeric: tabular-nums; min-width: 0; }
+  .pod .meta b { color: var(--gold); }
+  .tag { display: inline-block; padding: 0 5px; border-radius: 9px; background: #fff; color: #111; font-size: .62rem; font-weight: 800; line-height: 16px; }
+  .tag.blind { background: rgba(255,255,255,.25); color: inherit; }
+  .tag.status { background: rgba(0,0,0,.35); color: inherit; font-weight: 600; }
+  .middle { margin: 14px 0; text-align: center; }
   .pot { margin-top: 8px; font-weight: 600; font-variant-numeric: tabular-nums; }
   .cards { display: flex; gap: 6px; justify-content: center; }
+  .mini { display: flex; gap: 3px; flex-shrink: 0; }
   .card {
     width: 52px; height: 72px; border-radius: 7px; background: #fff; color: #111; font-weight: 700; font-size: 1.25rem;
     display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.05;
     box-shadow: 0 1px 3px rgba(0,0,0,.3);
   }
+  .mini .card { width: 28px; height: 40px; font-size: .8rem; border-radius: 4px; }
+  .mini .card .s { font-size: .85rem; }
   .card .s { font-size: 1.35rem; }
   .card.red { color: #c62828; }
   .card.back { background: repeating-linear-gradient(45deg, #2a4f8f 0 6px, #3762ad 6px 12px); border: 3px solid #fff; }
+  .mini .card.back { border-width: 2px; background: repeating-linear-gradient(45deg, #2a4f8f 0 4px, #3762ad 4px 8px); }
   .card.empty { background: none; border: 2px dashed rgba(255,255,255,.25); box-shadow: none; }
+  .me { display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: 10px; border: 2px solid transparent; }
+  .me.turn { border-color: var(--gold); }
+  .me .info { flex: 1; min-width: 0; font-variant-numeric: tabular-nums; }
+  .me .name { font-weight: 700; display: flex; gap: 4px; align-items: center; }
+  .me .meta { font-size: .85rem; opacity: .9; }
+  .me .meta b { color: var(--gold); }
 
   .status { text-align: center; font-weight: 600; min-height: 1.4em; margin: 4px 0 12px; }
   .actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 8px; margin-bottom: 14px; }
@@ -87,13 +102,22 @@
 </head>
 <body>
 <main>
-  <div class="top"><h1>♠ Play vs Bot</h1><a href="./">← Calculator</a></div>
+  <div class="top"><h1>♠ Play vs Bots</h1><a href="./">← Calculator</a></div>
 
-  <div class="panel score"><span id="score">Loading the bot…</span><span id="bought" class="note"></span></div>
+  <div class="panel score"><span id="score">Loading the bots…</span><span id="bought" class="note"></span></div>
 
   <details class="panel settings" id="settings">
     <summary id="settingsSummary">Game settings</summary>
     <form id="settingsForm">
+      <label>Players at the table
+        <select id="players">
+          <option value="2">2 (you + 1 bot)</option>
+          <option value="3">3 (you + 2 bots)</option>
+          <option value="4">4 (you + 3 bots)</option>
+          <option value="5">5 (you + 4 bots)</option>
+          <option value="6">6 (you + 5 bots)</option>
+        </select>
+      </label>
       <label>Blinds
         <select id="blinds">
           <option value="1">$0.50 / $1</option>
@@ -107,67 +131,72 @@
         <span class="hint" id="buyInHint"></span>
       </label>
       <button class="btn" type="submit">Start new game</button>
-      <span class="hint">Starting a new game resets both stacks and your results. You and the bot both buy in for the same amount.</span>
+      <span class="hint">Starting a new game resets every stack and your results. Everyone buys in for the same amount.</span>
     </form>
   </details>
 
   <div class="table">
-    <div class="seat">
-      <div class="cards" id="botCards"></div>
-      <div class="info"><div class="name">Bot<span id="botDealer"></span></div><div class="stack" id="botStack"></div><div class="bet" id="botBet"></div></div>
-    </div>
+    <div class="opps" id="opps"></div>
     <div class="middle">
       <div class="cards" id="board"></div>
       <div class="pot" id="pot"></div>
     </div>
-    <div class="seat">
+    <div class="me" id="me">
       <div class="cards" id="youCards"></div>
-      <div class="info"><div class="name">You<span id="youDealer"></span></div><div class="stack" id="youStack"></div><div class="bet" id="youBet"></div></div>
+      <div class="info"><div class="name">You<span id="youTags"></span></div><div class="meta" id="youMeta"></div></div>
     </div>
   </div>
 
   <div class="status" id="status"></div>
   <div class="actions" id="actions"></div>
 
-  <label class="toggle"><input type="checkbox" id="showThink"> Show the bot's thinking</label>
-  <div class="panel" id="thinkPanel" hidden><h2>Bot's last decision</h2><div id="think"></div></div>
+  <label class="toggle"><input type="checkbox" id="showThink"> Show the bots' thinking</label>
+  <div class="panel" id="thinkPanel" hidden><h2 id="thinkTitle">Last bot decision</h2><div id="think"></div></div>
 
   <div class="panel"><h2>This hand</h2><ul id="log"></ul></div>
 
-  <p class="note">Heads-up no-limit hold'em. Stacks carry over from hand to hand; the button posts the small blind.
-    The bot is a small neural network trained by self-play with stacks of 10 to 250 big blinds. It only knows five moves:
-    fold, check/call, raise ½ pot, raise pot and all-in, so you get the same five. <span id="modelInfo"></span></p>
+  <p class="note">No-limit hold'em for 2 to 6 players. Stacks carry over from hand to hand and the button moves one seat each hand.
+    Every bot is the same small neural network, trained by self-play at tables of 2 to 6 players with stacks of 10 to 250 big blinds.
+    It only knows five moves: fold, check/call, raise ½ pot, raise pot and all-in, so you get the same five. <span id="modelInfo"></span></p>
 </main>
 
 <script src="play-engine.js"></script>
 <script>
 (function () {
   var E = window.PokerEngine;
-  var YOU = 0, BOT = 1;
+  var YOU = 0;
   var RANKS = '23456789TJQKA', SUITS = ['♠', '♥', '♦', '♣'];
   var STREETS = ['Preflop', 'Flop', 'Turn', 'River'];
   var ACTION_LABELS = ['Fold', 'Check/Call', 'Raise ½ pot', 'Raise pot', 'All-in'];
+  var HAND_PHRASES = ['high card', 'a pair', 'two pair', 'three of a kind', 'a straight', 'a flush', 'a full house',
+    'four of a kind', 'a straight flush'];
   var MIN_BB = 10, MAX_BB = 500;
 
   var $ = function (id) { return document.getElementById(id); };
   // Chips are counted in half big blinds (env.bb = 2 chips); game.bigBlind is the dollar value of a big blind.
-  var bot = null, env = new E.Env(), handNo = 0, handId = 0, log = [], lastThink = null, busy = false, broke = false, startStacks = null;
-  var game = null;
-  try { var g = JSON.parse(localStorage.getItem('poker-vs-bot-game')); if (g && g.stacks && g.bigBlind) game = g; } catch (e) {}
+  // You are always seat 0; bots sit in seats 1..n-1.
+  var bot = null, env = new E.Env(), handId = 0, log = [], lastThink = null, busy = false, broke = false, startStacks = null;
+  var game = null, resultLines = [];
+  try {
+    var g = JSON.parse(localStorage.getItem('poker-vs-bots-game'));
+    if (g && g.players >= 2 && g.stacks && g.stacks.length === g.players && g.bigBlind) game = g;
+  } catch (e) {}
   try { $('showThink').checked = localStorage.getItem('poker-show-think') === '1'; } catch (e) {}
 
-  function newGame(bigBlind, buyIn) {
-    var chips = Math.round(buyIn / bigBlind) * env.bb;
-    game = { bigBlind: bigBlind, buyInChips: chips, stacks: [chips, chips], boughtIn: chips, botBuyIns: 1, hands: 0 };
+  function newGame(players, bigBlind, buyIn) {
+    var chips = Math.round(buyIn / bigBlind) * env.bb, stacks = [];
+    for (var i = 0; i < players; i++) stacks.push(chips);
+    game = { players: players, bigBlind: bigBlind, buyInChips: chips, stacks: stacks, boughtIn: chips, botRebuys: 0, hands: 0, button: 0 };
     saveGame();
   }
-  function saveGame() { try { localStorage.setItem('poker-vs-bot-game', JSON.stringify(game)); } catch (e) {} }
+  function saveGame() { try { localStorage.setItem('poker-vs-bots-game', JSON.stringify(game)); } catch (e) {} }
 
   function money(chips) {
     var v = Math.round(chips * game.bigBlind / env.bb * 100) / 100;
     return '$' + (v % 1 ? v.toFixed(2) : v.toLocaleString());
   }
   function signedMoney(chips) { return (chips > 0 ? '+' : chips < 0 ? '−' : '') + money(Math.abs(chips)); }
+  function name(s) { return s === YOU ? 'You' : 'Bot ' + s; }
   function cardHTML(c) {
     if (c === 'back') return '<div class="card back"></div>';
     if (c == null) return '<div class="card empty"></div>';
@@ -175,18 +204,26 @@
     return '<div class="card' + (red ? ' red' : '') + '"><span>' + (r === 'T' ? '10' : r) + '</span><span class="s">' + SUITS[c & 3] + '</span></div>';
   }
   function cardText(c) { var r = RANKS[c >> 2]; return (r === 'T' ? '10' : r) + SUITS[c & 3]; }
-  function handName(seat) { return E.CATEGORIES[E.evaluate(env.hole[seat].concat(env.board())) >> 20]; }
+  function handName(seat) { return E.CATEGORIES[E.evaluate(env.hole[seat].concat(env.fullBoard)) >> 20]; }
+  function listNames(seats) {
+    var names = seats.map(name);
+    return names.length === 1 ? names[0] : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
+  }
 
   // An opening wager after the flop is a bet, not a raise.
-  function isBet(seat) { return env.street > 0 && env.bet[1 - seat] === 0; }
+  function isBet() { return env.street > 0 && Math.max.apply(null, env.bet) === 0; }
 
   function describe(seat, a) {
-    var you = seat === YOU, who = you ? 'You' : 'Bot', tc = env.toCall(seat);
+    var you = seat === YOU, who = name(seat), tc = env.toCall(seat);
     if (a === E.FOLD) return who + (you ? ' fold' : ' folds');
-    if (a === E.CALL) return tc === 0 ? who + (you ? ' check' : ' checks') : who + (you ? ' call ' : ' calls ') + money(env.amountFor(a));
+    if (a === E.CALL) {
+      if (tc === 0) return who + (you ? ' check' : ' checks');
+      var amt = env.amountFor(a);
+      return who + (you ? ' call ' : ' calls ') + money(amt) + (amt === env.stack[seat] ? ' (all-in)' : '');
+    }
     var total = env.bet[seat] + env.amountFor(a);
     if (a === E.ALL_IN) return who + (you ? ' go' : ' goes') + ' all-in (' + money(total) + ')';
-    if (isBet(seat)) return who + (you ? ' bet ' : ' bets ') + money(total);
+    if (isBet()) return who + (you ? ' bet ' : ' bets ') + money(total);
     return who + (you ? ' raise' : ' raises') + ' to ' + money(total);
   }
 
@@ -202,10 +239,13 @@
 
   function newHand() {
     log = [];
-    if (game.stacks[BOT] < env.bb) {
-      game.stacks[BOT] += game.buyInChips;
-      game.botBuyIns++;
-      log.push({ street: true, text: 'Bot rebuys for ' + money(game.buyInChips) });
+    resultLines = [];
+    for (var s = 1; s < game.players; s++) {
+      if (game.stacks[s] < env.bb) {
+        game.stacks[s] += game.buyInChips;
+        game.botRebuys++;
+        log.push({ street: true, text: name(s) + ' rebuys for ' + money(game.buyInChips) });
+      }
     }
     broke = game.stacks[YOU] < env.bb;
     if (broke) return render();
@@ -213,85 +253,111 @@
     for (var i = 0; i < 52; i++) deck.push(i);
     for (i = 51; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)), t = deck[i]; deck[i] = deck[j]; deck[j] = t; }
     startStacks = game.stacks.slice();
-    env.reset(deck, handNo % 2, startStacks);
-    handNo++;
+    env.reset(deck, game.button % game.players, startStacks);
     handId++;
     bot.newHand();
     lastThink = null;
-    var sb = money(env.bb / 2), bigb = money(env.bb);
-    log.push({ text: env.button === YOU ? 'You post ' + sb + ' (button), Bot posts ' + bigb : 'Bot posts ' + sb + ' (button), you post ' + bigb });
+    log.push({ text: name(env.sbSeat) + ' post' + (env.sbSeat === YOU ? '' : 's') + ' ' + money(env.bb / 2) + ', ' +
+      name(env.bbSeat) + ' post' + (env.bbSeat === YOU ? '' : 's') + ' ' + money(env.bb) });
     advance();
   }
 
   function advance() {
     render();
     if (env.done) return finish();
-    if (env.toAct === BOT) {
+    if (env.toAct !== YOU) {
       busy = true;
-      var id = handId;
+      var id = handId, seat = env.toAct;
       setTimeout(function () {
         if (id !== handId) return;  // a new game started while the bot was thinking
-        var r = bot.act(env, BOT);
-        lastThink = { probs: r.probs, action: r.action, equity: bot.equity(env, BOT), street: env.street };
-        act(BOT, r.action);
+        var r = bot.act(env, seat);
+        lastThink = { seat: seat, probs: r.probs, action: r.action, equity: bot.equity(env, seat),
+                      street: env.street, opponents: env.inHand().length - 1 };
+        act(seat, r.action);
         busy = false;
         advance();
-      }, 500 + Math.random() * 500);
+      }, 400 + Math.random() * 400);
     }
   }
 
   function finish() {
-    var won = env.payoff[YOU] * env.bb, folded = null;  // chips
-    for (var st = 3; st >= 0 && folded == null; st--) {
-      var h = env.history[st];
-      if (h.length && h[h.length - 1][1] === E.FOLD) folded = h[h.length - 1][0];
+    var showdown = env.street === 4;
+    if (!showdown) {
+      var w = env.inHand()[0];
+      resultLines.push(name(w) + (w === YOU ? ' take' : ' takes') + ' the ' + money(env.pot()) + ' pot');
+    } else {
+      var contested = env.pots.filter(function (p) { return p.eligible > 1; });
+      contested.forEach(function (p, i) {
+        var label = contested.length === 1 ? 'Pot' : i === 0 ? 'Main pot' : 'Side pot';
+        resultLines.push(label + ' ' + money(p.amount) + ': ' +
+          (p.winners.length > 1 ? 'split by ' + listNames(p.winners) : listNames(p.winners) + (p.winners[0] === YOU ? ' win' : ' wins')) +
+          ' with ' + HAND_PHRASES[E.evaluate(env.hole[p.winners[0]].concat(env.fullBoard)) >> 20]);
+      });
     }
-    var msg;
-    if (folded != null) msg = folded === YOU ? 'Bot wins ' + money(-won) : 'You win ' + money(won);
-    else {
-      var yh = handName(YOU), bh = handName(BOT), same = yh === bh ? ' (better kicker/ranks)' : '';
-      if (won === 0) msg = 'Split pot: both have ' + yh;
-      else if (won > 0) msg = 'You win ' + money(won) + ': ' + yh + (same || ' beats ' + bh);
-      else msg = 'Bot wins ' + money(-won) + ': ' + bh + (same || ' beats ' + yh);
-    }
-    log.push({ street: true, text: msg });
-    game.stacks = [startStacks[YOU] + won, startStacks[BOT] - won];
+    resultLines.forEach(function (l) { log.push({ street: true, text: l }); });
+    for (var s = 0; s < game.players; s++) game.stacks[s] = startStacks[s] + env.payoff[s] * env.bb;
     game.hands++;
+    game.button = (game.button + 1) % game.players;
     saveGame();
-    render(msg);
+    render();
   }
 
-  function render(resultMsg) {
-    var dealt = !!env.hole, showdown = dealt && env.done && env.street === 4;
-    $('botCards').innerHTML = dealt ? env.hole[BOT].map(function (c) { return cardHTML(showdown ? c : 'back'); }).join('') : '';
+  function tags(seat) {
+    if (!env.hole) return '';
+    var out = '';
+    if (seat === env.button) out += ' <span class="tag">D</span>';
+    if (seat === env.sbSeat) out += ' <span class="tag blind">SB</span>';
+    if (seat === env.bbSeat) out += ' <span class="tag blind">BB</span>';
+    if (env.folded[seat]) out += ' <span class="tag status">folded</span>';
+    else if (env.stack[seat] === 0 && !env.done) out += ' <span class="tag status">all-in</span>';
+    return out;
+  }
+
+  function seatMeta(seat, live) {
+    var stack = live ? env.stack[seat] : game.stacks[seat];
+    var out = 'Stack ' + money(stack);
+    if (live && env.bet[seat]) out += '<br>Bet <b>' + money(env.bet[seat]) + '</b>';
+    if (env.hole && env.done && env.street === 4 && !env.folded[seat]) out += '<br>' + handName(seat);
+    return out;
+  }
+
+  function render() {
+    var dealt = !!env.hole && env.n === game.players, live = dealt && !env.done;
+    var showdown = dealt && env.done && env.street === 4;
+    var opps = '';
+    for (var s = 1; s < game.players; s++) {
+      var cards = '';
+      if (dealt && !env.folded[s]) cards = env.hole[s].map(function (c) { return cardHTML(showdown ? c : 'back'); }).join('');
+      opps += '<div class="pod' + (live && env.toAct === s ? ' turn' : '') + (dealt && env.folded[s] ? ' folded' : '') + '">' +
+        '<div class="row1">' + name(s) + (dealt ? tags(s) : '') + '</div>' +
+        '<div class="row2"><div class="mini">' + cards + '</div><div class="meta">' + seatMeta(s, live) + '</div></div></div>';
+    }
+    $('opps').innerHTML = opps;
     $('youCards').innerHTML = dealt ? env.hole[YOU].map(cardHTML).join('') : '';
+    $('youTags').innerHTML = dealt ? tags(YOU) : '';
+    $('youMeta').innerHTML = seatMeta(YOU, live);
+    $('me').className = 'me' + (live && env.toAct === YOU ? ' turn' : '');
     var b = dealt ? env.board() : [];
     $('board').innerHTML = [0, 1, 2, 3, 4].map(function (i) { return cardHTML(b[i]); }).join('');
-    $('pot').textContent = dealt && !env.done ? 'Pot ' + money(env.pot()) : '';
-    [[YOU, 'you'], [BOT, 'bot']].forEach(function (p) {
-      var stack = dealt && !env.done ? env.stack[p[0]] : game.stacks[p[0]];
-      $(p[1] + 'Stack').textContent = 'Stack ' + money(stack);
-      $(p[1] + 'Bet').innerHTML = dealt && !env.done && env.bet[p[0]] ? 'Bet <b>' + money(env.bet[p[0]]) + '</b>' : '&nbsp;';
-      $(p[1] + 'Dealer').innerHTML = dealt && env.button === p[0] ? '<span class="dealer" title="Button">D</span>' : '';
-    });
+    $('pot').textContent = live ? 'Pot ' + money(env.pot()) : '';
 
-    var net = game.stacks[YOU] - game.boughtIn;
-    if (dealt && !env.done) net = startStacks[YOU] - game.boughtIn;
+    var net = (live ? startStacks[YOU] : game.stacks[YOU]) - game.boughtIn;
     $('score').innerHTML = 'Net: <span class="' + (net > 0 ? 'pos' : net < 0 ? 'neg' : '') + '">' + signedMoney(net) + '</span> over ' + game.hands + ' hand' + (game.hands === 1 ? '' : 's');
-    $('bought').textContent = 'You bought in for ' + money(game.boughtIn) + (game.botBuyIns > 1 ? ' · Bot rebought ' + (game.botBuyIns - 1) + '×' : '');
-    $('settingsSummary').textContent = 'Game: ' + money(env.bb / 2) + ' / ' + money(env.bb) + ' blinds · ' + money(game.buyInChips) + ' buy-in';
+    $('bought').textContent = 'You bought in for ' + money(game.boughtIn) + (game.botRebuys ? ' · Bots rebought ' + game.botRebuys + '×' : '');
+    $('settingsSummary').textContent = 'Game: ' + game.players + ' players · ' + money(env.bb / 2) + ' / ' + money(env.bb) + ' blinds · ' + money(game.buyInChips) + ' buy-in';
 
     var status = $('status'), actions = $('actions');
     if (broke) {
       status.innerHTML = '<span class="neg">You\'re out of chips.</span>';
       actions.innerHTML = '<button class="primary next" id="rebuy">Rebuy for ' + money(game.buyInChips) + '</button>';
-    } else if (env.done) {
-      status.innerHTML = '<span class="' + (env.payoff[YOU] > 0 ? 'pos' : env.payoff[YOU] < 0 ? 'neg' : '') + '">' + (resultMsg || '') + '</span>';
+    } else if (dealt && env.done) {
+      var mine = env.payoff[YOU];
+      status.innerHTML = '<span class="' + (mine > 0 ? 'pos' : mine < 0 ? 'neg' : '') + '">' + resultLines.join('<br>') + '</span>';
       actions.innerHTML = '<button class="primary next" id="next">Next hand</button>';
-    } else if (env.toAct === BOT) {
-      status.textContent = 'Bot is thinking…';
+    } else if (live && env.toAct !== YOU) {
+      status.textContent = name(env.toAct) + ' is thinking…';
       actions.innerHTML = buttonsHTML(true);
-    } else {
+    } else if (live) {
       var tc = env.toCall(YOU);
       status.textContent = tc ? 'Your move: ' + money(Math.min(tc, env.stack[YOU])) + ' to call' : 'Your move';
       actions.innerHTML = buttonsHTML(false);
@@ -303,7 +369,7 @@
 
   function buttonsHTML(disabled) {
     if (env.toAct !== YOU) disabled = true;
-    var legal = disabled ? [] : env.legalActions(), seat = YOU, tc = env.toCall(seat), bet = isBet(seat);
+    var legal = disabled ? [] : env.legalActions(), seat = YOU, tc = env.toCall(seat), bet = isBet();
     var spec = [
       [E.FOLD, 'Fold', ''],
       [E.CALL, tc ? 'Call' : 'Check', tc ? money(Math.min(tc, env.stack[seat])) : ''],
@@ -322,8 +388,11 @@
     var on = $('showThink').checked;
     $('thinkPanel').hidden = !on;
     if (!on) return;
-    if (!lastThink) { $('think').innerHTML = '<div class="note">Nothing yet this hand.</div>'; return; }
-    var html = '<div class="note" style="margin-bottom:6px">' + STREETS[lastThink.street] + ': the bot estimated ' + Math.round(lastThink.equity * 100) + '% equity against a random hand.</div>';
+    if (!lastThink) { $('thinkTitle').textContent = 'Last bot decision'; $('think').innerHTML = '<div class="note">Nothing yet this hand.</div>'; return; }
+    $('thinkTitle').textContent = name(lastThink.seat) + '\'s last decision';
+    var k = lastThink.opponents;
+    var html = '<div class="note" style="margin-bottom:6px">' + STREETS[lastThink.street] + ': it estimated ' + Math.round(lastThink.equity * 100) +
+      '% equity against ' + (k === 1 ? 'a random hand' : k + ' random hands') + '.</div>';
     lastThink.probs.forEach(function (p, a) {
       if (p <= 0) return;
       html += '<div class="think-row' + (a === lastThink.action ? ' chosen' : '') + '"><span>' + ACTION_LABELS[a] + '</span><span class="bar"><i style="width:' + (p * 100).toFixed(1) + '%"></i></span><span>' + Math.round(p * 100) + '%</span></div>';
@@ -333,6 +402,7 @@
 
   // ---- settings ----
   function fillSettings() {
+    $('players').value = String(game.players);
     $('blinds').value = String(game.bigBlind);
     $('buyIn').value = game.buyInChips / env.bb * game.bigBlind;
     updateHint();
@@ -341,7 +411,7 @@
     var bigBlind = +$('blinds').value, n = Math.round(+$('buyIn').value / bigBlind);
     $('buyIn').min = MIN_BB * bigBlind;
     $('buyIn').max = MAX_BB * bigBlind;
-    $('buyInHint').textContent = (n ? n + ' big blinds. ' : '') + 'Allowed: ' + MIN_BB + '–' + MAX_BB + ' big blinds ($' + (MIN_BB * bigBlind) + '–$' + (MAX_BB * bigBlind).toLocaleString() + '). The bot plays best between 20 and 250.';
+    $('buyInHint').textContent = (n ? n + ' big blinds. ' : '') + 'Allowed: ' + MIN_BB + '–' + MAX_BB + ' big blinds ($' + (MIN_BB * bigBlind) + '–$' + (MAX_BB * bigBlind).toLocaleString() + '). The bots play best between 20 and 250.';
   }
   $('blinds').addEventListener('change', updateHint);
   $('buyIn').addEventListener('input', updateHint);
@@ -349,10 +419,11 @@
     e.preventDefault();
     var bigBlind = +$('blinds').value, n = Math.round(+$('buyIn').value / bigBlind);
     n = Math.min(MAX_BB, Math.max(MIN_BB, n || 100));
-    newGame(bigBlind, n * bigBlind);
+    newGame(+$('players').value, bigBlind, n * bigBlind);
     fillSettings();
     $('settings').open = false;
     busy = false;
+    handId++;
     if (bot) newHand();
   });
 
@@ -375,7 +446,7 @@
     renderThink();
   });
 
-  if (!game) newGame(2, 200);
+  if (!game) newGame(4, 2, 200);
   fillSettings();
 
   fetch('bot-model.json')
@@ -386,7 +457,7 @@
       newHand();
     })
     .catch(function () {
-      $('score').textContent = 'Could not load the bot.';
+      $('score').textContent = 'Could not load the bots.';
       $('status').textContent = 'bot-model.json did not load. If you opened this file directly, serve the folder instead (python3 -m http.server).';
     });
 })();

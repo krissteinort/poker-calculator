@@ -1,14 +1,17 @@
 # Poker bot
 
-A heads-up (two-player) no-limit hold'em bot trained by self-play with PPO.
+A no-limit hold'em bot for tables of 2–6 players, trained by self-play with PPO.
 
-- **Game:** each player's stack is drawn at random from 10–250 big blinds during training; change the range with `--min-stack-bb`/`--max-stack-bb`. Every decision is one of five actions: fold, check/call, raise ½ pot, raise pot, all-in.
+- **Game** ([poker/env.py](poker/env.py)): standard blinds and turn order, with side pots for unequal all-ins. Every decision is one of five actions: fold, check/call, raise ½ pot, raise pot, all-in.
+- **Training tables:** each hand draws a table size of 2–6 players (`--min-players`/`--max-players`) and stacks of 10–250 big blinds (`--min-stack-bb`/`--max-stack-bb`).
 - **What the network sees** ([poker/features.py](poker/features.py)):
   - the player's cards and the board;
-  - **equity against a random hand** (a precomputed table before the flop, Monte Carlo after it);
+  - **equity against as many random hands as there are opponents left**: a precomputed table before the flop, Monte Carlo after it;
+  - table size, players still in the hand, and the player's seat relative to the button;
   - pot, stack and price-to-call figures;
   - the current hand type;
-  - a summary of the betting so far.
+  - a summary of the betting so far;
+  - for each opponent, in seat order: still in or folded, all-in, stack, bets and raises.
 - **Network:** a 2×256 MLP that outputs both the action probabilities and a value estimate.
 - **Training:** the bot plays against its current self, past snapshots of itself, and a few simple bots. Hands are simulated on CPU worker processes with numpy, and the update step uses a GPU if there is one.
 
@@ -28,10 +31,10 @@ Re-running `train.py` with the same `--ckpt-dir` resumes from the last checkpoin
 
 Results are in **mbb/hand**: thousandths of a big blind won per hand.
 
-- `evaluate.py` uses duplicate matches: each deck is played twice with the seats swapped, which cancels out most of the luck.
+- `evaluate.py` uses duplicate matches: the bot plays against copies of one opponent, and each deck is replayed with the bot in every seat. This cancels out most of the luck.
 - Beating `call`, `raise` and `equity` by a wide margin is the first milestone.
 - To check that newer checkpoints still improve, play them against older ones with `--vs path/to/old.pt`.
-- Matches use 100bb stacks by default. Test other depths with `--stack-bb 20 100 250`. Training's own checkpoint evaluations use 100bb only.
+- Matches use 100bb stacks at 2 and 6 players by default. Change them with `--stack-bb 20 100 250` and `--players 2 3 6`. Training's own checkpoint evaluations use 100bb at the smallest and largest table size.
 
 The simple bots it is measured against (in [poker/agents.py](poker/agents.py)):
 
@@ -65,7 +68,7 @@ Most of the work is simulating hands, so **CPU cores matter more than the GPU**.
 
 ## Playing it in the browser
 
-[play.html](../play.html) lets visitors play heads-up against the bot. It runs entirely in the browser:
+[play.html](../play.html) lets visitors play against 1–5 bots. Every bot is the same network. It runs entirely in the browser:
 
 - [play-engine.js](../play-engine.js) is a JS copy of the game rules, the features and the network.
 - [bot-model.json](../bot-model.json) holds the trained weights and the preflop equity table.
