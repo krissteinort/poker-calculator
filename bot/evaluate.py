@@ -31,15 +31,17 @@ def main():
     p.add_argument('--vs', nargs='+', default=['equity', 'call', 'raise', 'random'],
                    help='baseline names (%s) or checkpoint paths' % ', '.join(BASELINES))
     p.add_argument('--pairs', type=int, default=20000)
+    p.add_argument('--stack-bb', type=float, nargs='+', default=[100], help='stack depths to test, in big blinds')
     p.add_argument('--workers', type=int, default=os.cpu_count())
     args = p.parse_args()
 
     me = load_policy(args.ckpt)
     with mp.get_context('spawn').Pool(args.workers) as pool:
-        for opp in args.vs:
-            spec = opp if opp in BASELINES else load_policy(opp)
-            mbb, ci = duplicate_match(pool, me, spec, args.pairs, seed=1, chunks=args.workers * 4)
-            print(f'vs {opp:>12}: {mbb:+8.0f} mbb/hand  (95% CI ±{ci:.0f}, {2 * args.pairs:,} hands)')
+        for depth in args.stack_bb:
+            for opp in args.vs:
+                spec = opp if opp in BASELINES else load_policy(opp)
+                mbb, ci = duplicate_match(pool, me, spec, args.pairs, seed=1, chunks=args.workers * 4, stack_bb=depth)
+                print(f'{depth:g}bb vs {opp:>12}: {mbb:+8.0f} mbb/hand  (95% CI ±{ci:.0f}, {2 * args.pairs:,} hands)')
 
 
 if __name__ == '__main__':

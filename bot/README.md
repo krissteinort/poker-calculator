@@ -2,7 +2,7 @@
 
 A heads-up (two-player) no-limit hold'em bot trained by self-play with PPO.
 
-- **Game:** 100 big blind stacks. Every decision is one of five actions: fold, check/call, raise ½ pot, raise pot, all-in.
+- **Game:** each player's stack is drawn at random from 10–250 big blinds during training; change the range with `--min-stack-bb`/`--max-stack-bb`. Every decision is one of five actions: fold, check/call, raise ½ pot, raise pot, all-in.
 - **What the network sees** ([poker/features.py](poker/features.py)):
   - the player's cards and the board;
   - **equity against a random hand** (a precomputed table before the flop, Monte Carlo after it);
@@ -31,6 +31,7 @@ Results are in **mbb/hand**: thousandths of a big blind won per hand.
 - `evaluate.py` uses duplicate matches: each deck is played twice with the seats swapped, which cancels out most of the luck.
 - Beating `call`, `raise` and `equity` by a wide margin is the first milestone.
 - To check that newer checkpoints still improve, play them against older ones with `--vs path/to/old.pt`.
+- Matches use 100bb stacks by default. Test other depths with `--stack-bb 20 100 250`. Training's own checkpoint evaluations use 100bb only.
 
 The simple bots it is measured against (in [poker/agents.py](poker/agents.py)):
 
@@ -62,10 +63,21 @@ Most of the work is simulating hands, so **CPU cores matter more than the GPU**.
    To keep training running if your browser disconnects, start it inside `tmux`.
 3. Download `/workspace/poker-ckpt/latest.pt` from the pod. Use `runpodctl send`, or the file browser in Jupyter.
 
-## Using the bot in the calculator
+## Playing it in the browser
+
+[play.html](../play.html) lets visitors play heads-up against the bot. It runs entirely in the browser:
+
+- [play-engine.js](../play-engine.js) is a JS copy of the game rules, the features and the network.
+- [bot-model.json](../bot-model.json) holds the trained weights and the preflop equity table.
+
+To ship a newer bot:
 
 ```bash
 .venv/bin/python export.py --ckpt ckpt/latest.pt --out ../bot-model.json
 ```
 
-This writes the weights as JSON. The calculator page can then run the network in plain JS: the feature encoding is small enough to re-implement, and the equity engine already exists there.
+Then commit and push `bot-model.json`. The site uses the new bot as soon as GitHub Pages redeploys.
+
+If you change the rules or the features in Python, change `play-engine.js` to match. [tests/test_parity.py](tests/test_parity.py) fails if the two disagree. It needs `node` installed and is skipped without it.
+
+To try the page locally, serve the repo root with `python3 -m http.server` and open `http://localhost:8000/play.html`. The page loads the bot with `fetch`, which doesn't work when the file is opened directly.

@@ -10,6 +10,7 @@ from .cards import category, equity_mc, preflop_equity
 from .env import CALL, FOLD, N_ACTIONS
 
 OBS_SIZE = 52 + 52 + 1 + 4 + 1 + 5 + 9 + 16
+CHIP_SCALE_BB = 100  # chip amounts are fed to the network in units of 100 big blinds
 
 
 class EquityCache:
@@ -43,7 +44,7 @@ def encode(env, seat, eq):
     x[i + env.street] = 1; i += 4
     x[i] = env.button == seat; i += 1
 
-    s0 = env.start_stack
+    s0 = CHIP_SCALE_BB * env.bb  # fixed scale, so deeper stacks show up as bigger values
     tc = env.to_call(seat)
     x[i] = env.pot / (2 * s0)
     x[i + 1] = env.stack[seat] / s0

@@ -29,6 +29,8 @@ def parse_args():
     p.add_argument('--workers', type=int, default=os.cpu_count())
     p.add_argument('--hands-per-iter', type=int, default=8000)
     p.add_argument('--hands-per-task', type=int, default=200)
+    p.add_argument('--min-stack-bb', type=float, default=10, help='training stacks are drawn between these')
+    p.add_argument('--max-stack-bb', type=float, default=250)
     p.add_argument('--hidden', type=int, default=256)
     p.add_argument('--lr', type=float, default=3e-4)
     p.add_argument('--epochs', type=int, default=4)
@@ -132,7 +134,7 @@ def main():
                 opp = ('policy', w)
             else:
                 opp = ('policy', rng.choice(pool_snaps))
-            tasks.append((w, opp, args.hands_per_task, rng.randrange(2 ** 31)))
+            tasks.append((w, opp, args.hands_per_task, rng.randrange(2 ** 31), (args.min_stack_bb, args.max_stack_bb)))
         parts = workers.map(rollout, tasks)
         batch = {k: np.concatenate([p[k] for p in parts]) for k in ('obs', 'mask', 'act', 'logp', 'val', 'rew', 'done')}
         batch['adv'], batch['ret'] = advantages(batch['rew'], batch['val'], batch['done'], args.gae_lambda)

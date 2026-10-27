@@ -18,14 +18,16 @@ class HeadsUpEnv:
         self.bb = bb
         self.start_stack = stack_bb * bb
 
-    def reset(self, deck=None, button=0, rng=random):
+    def reset(self, deck=None, button=0, rng=random, stacks=None):
+        """stacks: starting chips per seat (default start_stack each); each must cover a big blind."""
         if deck is None:
             deck = list(range(52))
             rng.shuffle(deck)
         self.hole = [deck[0:2], deck[2:4]]
         self.full_board = deck[4:9]
         self.button = button
-        self.stack = [self.start_stack, self.start_stack]
+        self.stack = list(stacks) if stacks else [self.start_stack, self.start_stack]
+        assert min(self.stack) >= self.bb, self.stack
         self.bet = [0, 0]       # chips put in on this street
         self.contrib = [0, 0]   # chips put in this hand
         self.street = 0

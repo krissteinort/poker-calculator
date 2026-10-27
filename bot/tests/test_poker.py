@@ -40,6 +40,18 @@ class TestEnv(unittest.TestCase):
             self.assertLessEqual(abs(payoff[0]), 100)
             self.assertEqual(env.contrib[0] + env.stack[0], env.start_stack)
 
+    def test_uneven_stacks(self):
+        rng = random.Random(1)
+        env = HeadsUpEnv()
+        agents = [BASELINES['random'](), BASELINES['raise']()]
+        for i in range(3000):
+            stacks = [rng.randint(1, 300) * env.bb, rng.randint(1, 300) * env.bb]
+            payoff = play_hand(env, agents, None, i % 2, rng, stacks)
+            self.assertAlmostEqual(payoff[0] + payoff[1], 0)
+            self.assertLessEqual(abs(payoff[0]) * env.bb, min(stacks))
+            for s in (0, 1):
+                self.assertEqual(env.contrib[s] + env.stack[s], stacks[s])
+
     def test_fold_preflop(self):
         env = HeadsUpEnv()
         env.reset(list(range(52)), button=0)

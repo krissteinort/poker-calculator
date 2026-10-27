@@ -25,6 +25,8 @@
   }
   main { max-width: 640px; margin: 0 auto; }
   h1 { font-size: 1.3rem; margin: 18px 0 12px; }
+  .top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .top a { color: var(--accent); font-weight: 600; text-decoration: none; white-space: nowrap; }
   h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 14px; }
   .row { display: flex; align-items: center; gap: 8px; }
@@ -87,7 +89,7 @@
 </head>
 <body>
 <main>
-  <h1>♠ Kris's Poker Calculator</h1>
+  <div class="top"><h1>♠ Kris's Poker Calculator</h1><a href="play.html">Play vs Bot →</a></div>
 
   <div class="seg" id="modeSeg">
     <button data-mode="single">Individual</button>
